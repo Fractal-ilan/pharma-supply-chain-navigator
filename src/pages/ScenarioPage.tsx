@@ -77,7 +77,7 @@ export default function ScenarioPage() {
         ))}
       </div>
 
-      <WeekRangeSlider />
+      <WeekRangeSlider totalWeeks={TOTAL_WEEKS} value={range} onChange={setRange} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <KpiCard
