@@ -1,6 +1,6 @@
 import { KpiCard } from "@/components/KpiCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { timeseriesData, calibrationData, aiComparisonData, last } from "@/data";
+import { timeseriesData, calibrationData, aiComparisonData, TOTAL_WEEKS, last } from "@/data";
 import { WeekRangeSlider, useWeekRange } from "@/components/WeekRangeSlider";
 import { Brain, Package, Target, TrendingUp } from "lucide-react";
 import {
@@ -14,7 +14,9 @@ const aiComp = aiComparisonData;
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default function ShortagePage() {
-  const { startWeek, endWeek } = useWeekRange();
+  const { range, setRange } = useWeekRange(TOTAL_WEEKS);
+  const startWeek = range[0];
+  const endWeek = range[1] + 1;
 
   // Slice data for active week range
   const slicedShortage = ts.Shortage_Predictions.slice(startWeek, endWeek);
@@ -43,7 +45,7 @@ export default function ShortagePage() {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Shortage Prediction — Use Case 3</h2>
 
-      <WeekRangeSlider />
+      <WeekRangeSlider totalWeeks={TOTAL_WEEKS} value={range} onChange={setRange} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
