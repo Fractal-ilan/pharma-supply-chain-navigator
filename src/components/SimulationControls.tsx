@@ -5,6 +5,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { SimulationResult, PharmaConfig as ABMConfig } from "@/lib/pharmaABM";
+import { runSimulation, runMonteCarloSimulation } from "@/lib/pharmaABM";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
