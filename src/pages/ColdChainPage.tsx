@@ -5,7 +5,7 @@ import { aiComparisonData } from "@/data/aiComparison";
 import { calibrationData } from "@/data/calibration";
 import { Thermometer, AlertTriangle, Brain } from "lucide-react";
 import {
-  Line, LineChart, Bar, BarChart,
+  Line, LineChart, Bar, BarChart, Cell,
   ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 
