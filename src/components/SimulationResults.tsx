@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import type { SimulationResult, WeeklySnapshot } from "@/lib/pharmaABM";
+import type { SimulationResult } from "@/lib/pharmaABM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KpiCard } from "@/components/KpiCard";
@@ -37,7 +37,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import { AlertCircle, TrendingUp } from "lucide-react";
+import { AlertCircle, TrendingUp, Activity, Package, ShieldAlert, Thermometer, Users, BarChart3 } from "lucide-react";
 
 interface SimulationResultsProps {
   result: SimulationResult | null;
@@ -75,93 +75,62 @@ const phaseColors: Record<string, string> = {
 export function SimulationResults({ result }: SimulationResultsProps) {
   const [selectedWeek, setSelectedWeek] = useState<number>(0);
 
-  if (!result) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-slate-300 text-lg">
-            Configure and run a simulation to see results
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const weeklyData = useMemo(() => {
-    return result.weeklySnapshots.map((snapshot, idx) => ({
+    if (!result) return [];
+    return result.weeklyData.map((snapshot, idx) => ({
       week: idx,
-      serviceLevel: snapshot.metrics.serviceLevel,
+      serviceLevel: snapshot.serviceLevel,
       totalInventory: snapshot.totalInventory,
-      stockouts: snapshot.stockoutCount,
-      activeDisruptions: snapshot.activeDisruptionCount,
+      stockouts: snapshot.stockouts,
+      activeDisruptions: snapshot.activeDisruptions,
       tier1: snapshot.supplyByTier.tier1,
       tier2: snapshot.supplyByTier.tier2,
       tier3: snapshot.supplyByTier.tier3,
       phase: snapshot.phase,
     }));
-  }, [result.weeklySnapshots]);
+  }, [result]);
 
   const minServiceLevel = useMemo(() => {
-    const min = Math.min(...result.weeklySnapshots.map(s => s.metrics.serviceLevel));
-    const week = result.weeklySnapshots.findIndex(s => s.metrics.serviceLevel === min);
+    if (!result) return { value: "0", week: 0 };
+    const min = Math.min(...result.weeklyData.map(s => s.serviceLevel));
+    const week = result.weeklyData.findIndex(s => s.serviceLevel === min);
     return { value: min.toFixed(1), week };
-  }, [result.weeklySnapshots]);
+  }, [result]);
 
   const peakStockouts = useMemo(() => {
-    return Math.max(...result.weeklySnapshots.map(s => s.stockoutCount));
-  }, [result.weeklySnapshots]);
+    if (!result) return 0;
+    return Math.max(...result.weeklyData.map(s => s.stockouts));
+  }, [result]);
 
   const recoveryWeek = useMemo(() => {
-    const idx = result.weeklySnapshots.findIndex(
-      s => s.metrics.serviceLevel >= 95 && s.phase === "recovery"
+    if (!result) return 0;
+    const idx = result.weeklyData.findIndex(
+      s => s.serviceLevel >= 95 && s.phase === "recovery"
     );
-    return idx >= 0 ? idx : result.weeklySnapshots.length - 1;
-  }, [result.weeklySnapshots]);
-
-  const monteCarloBands = useMemo(() => {
-    if (!result.monteCarlo) return null;
-
-    const mc = result.monteCarlo;
-    return {
-      p5p95: {
-        avgServiceLevel: mc.percentiles.serviceLevel.p95,
-        avgInventory: mc.percentiles.inventory.p95,
-      },
-      p25p75: {
-        avgServiceLevel: mc.percentiles.serviceLevel.p75,
-        avgInventory: mc.percentiles.inventory.p75,
-      },
-      median: {
-        serviceLevel: mc.percentiles.serviceLevel.p50,
-        inventory: mc.percentiles.inventory.p50,
-      },
-    };
-  }, [result.monteCarlo]);
+    return idx >= 0 ? idx : result.weeklyData.length - 1;
+  }, [result]);
 
   const agentSnapshot = useMemo(() => {
-    if (!result.agentSnapshots || result.agentSnapshots.length === 0) return null;
+    if (!result?.agentSnapshots || result.agentSnapshots.length === 0) return null;
     const weeks = result.agentSnapshots.map((_, i) => i * 4);
     return { weeks, data: result.agentSnapshots };
-  }, [result.agentSnapshots]);
+  }, [result]);
 
   const networkData = useMemo(() => {
-    if (!result.agentSnapshots || result.agentSnapshots.length === 0) {
-      return null;
-    }
+    if (!result?.agentSnapshots || result.agentSnapshots.length === 0) return null;
     const snap = result.agentSnapshots[result.agentSnapshots.length - 1];
     return {
       tier3: {
-        count: snap.suppliers.filter(s => s.tier === 3).length,
-        disrupted: snap.suppliers.filter(s => s.tier === 3 && s.disrupted).length,
+        count: snap.suppliers.filter(s => s.tier === "tier3" || s.tier === "3").length,
+        disrupted: snap.suppliers.filter(s => (s.tier === "tier3" || s.tier === "3") && s.disrupted).length,
       },
       tier2: {
-        count: snap.suppliers.filter(s => s.tier === 2).length,
-        disrupted: snap.suppliers.filter(s => s.tier === 2 && s.disrupted).length,
+        count: snap.suppliers.filter(s => s.tier === "tier2" || s.tier === "2").length,
+        disrupted: snap.suppliers.filter(s => (s.tier === "tier2" || s.tier === "2") && s.disrupted).length,
       },
       tier1: {
-        count: snap.suppliers.filter(s => s.tier === 1).length,
-        disrupted: snap.suppliers.filter(s => s.tier === 1 && s.disrupted).length,
+        count: snap.suppliers.filter(s => s.tier === "tier1" || s.tier === "1").length,
+        disrupted: snap.suppliers.filter(s => (s.tier === "tier1" || s.tier === "1") && s.disrupted).length,
       },
       mfg: {
         count: snap.manufacturers.length,
@@ -172,34 +141,48 @@ export function SimulationResults({ result }: SimulationResultsProps) {
         lowService: snap.distributors.filter(d => (d.serviceLevel || 0) < 95).length,
       },
     };
-  }, [result.agentSnapshots]);
+  }, [result]);
 
   const phaseTimeline = useMemo(() => {
+    if (!result) return [];
     const phases: Array<{ phase: string; start: number; weeks: number; color: string }> = [];
-    let currentPhase = result.weeklySnapshots[0].phase;
+    let currentPhase = result.weeklyData[0].phase;
     let phaseStart = 0;
 
-    for (let i = 1; i < result.weeklySnapshots.length; i++) {
-      if (result.weeklySnapshots[i].phase !== currentPhase) {
+    for (let i = 1; i < result.weeklyData.length; i++) {
+      if (result.weeklyData[i].phase !== currentPhase) {
         phases.push({
           phase: currentPhase,
           start: phaseStart,
           weeks: i - phaseStart,
           color: phaseColors[currentPhase] || "#9CA3AF",
         });
-        currentPhase = result.weeklySnapshots[i].phase;
+        currentPhase = result.weeklyData[i].phase;
         phaseStart = i;
       }
     }
     phases.push({
       phase: currentPhase,
       start: phaseStart,
-      weeks: result.weeklySnapshots.length - phaseStart,
+      weeks: result.weeklyData.length - phaseStart,
       color: phaseColors[currentPhase] || "#9CA3AF",
     });
 
     return phases;
-  }, [result.weeklySnapshots]);
+  }, [result]);
+
+  if (!result) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground text-lg">
+            Configure and run a simulation to see results
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Tabs defaultValue="overview" className="w-full">
@@ -218,32 +201,36 @@ export function SimulationResults({ result }: SimulationResultsProps) {
 
       {/* ===== OVERVIEW TAB ===== */}
       <TabsContent value="overview" className="space-y-6">
-        {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <KpiCard
             title="Min Service Level"
             value={`${minServiceLevel.value}%`}
-            subtitle={`on week ${minServiceLevel.week}`}
+            icon={<Activity className="h-4 w-4" />}
           />
           <KpiCard
             title="Peak Stockouts"
             value={peakStockouts.toString()}
+            icon={<Package className="h-4 w-4" />}
           />
           <KpiCard
             title="Recovery Week"
             value={recoveryWeek.toString()}
+            icon={<TrendingUp className="h-4 w-4" />}
           />
           <KpiCard
             title="Total Spoiled Units"
-            value={result.totalSpoiledUnits.toString()}
+            value={result.summary.totalSpoiledUnits.toString()}
+            icon={<Thermometer className="h-4 w-4" />}
           />
           <KpiCard
             title="Compliance Violations"
-            value={result.complianceViolations.toString()}
+            value={result.summary.complianceViolationsTotal.toString()}
+            icon={<ShieldAlert className="h-4 w-4" />}
           />
           <KpiCard
             title="Est. Patient Impact"
-            value={Math.round(result.estimatedPatientImpact).toString()}
+            value={Math.round(result.summary.estimatedPatientImpact).toString()}
+            icon={<Users className="h-4 w-4" />}
           />
         </div>
 
@@ -323,33 +310,9 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                   <YAxis {...chartConfig.axis} />
                   <Tooltip {...chartConfig.tooltip} />
                   <Legend />
-                  <Area
-                    type="monotone"
-                    dataKey="tier3"
-                    stackId="1"
-                    stroke="#8B5CF6"
-                    fill="#8B5CF6"
-                    fillOpacity={0.6}
-                    name="Tier 3"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="tier2"
-                    stackId="1"
-                    stroke="#F59E0B"
-                    fill="#F59E0B"
-                    fillOpacity={0.6}
-                    name="Tier 2"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="tier1"
-                    stackId="1"
-                    stroke="#3B82F6"
-                    fill="#3B82F6"
-                    fillOpacity={0.6}
-                    name="Tier 1"
-                  />
+                  <Area type="monotone" dataKey="tier3" stackId="1" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.6} name="Tier 3" />
+                  <Area type="monotone" dataKey="tier2" stackId="1" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.6} name="Tier 2" />
+                  <Area type="monotone" dataKey="tier1" stackId="1" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} name="Tier 1" />
                 </AreaChart>
               </ResponsiveContainer>
             </CardContent>
@@ -369,12 +332,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                   <Tooltip {...chartConfig.tooltip} />
                   <Legend />
                   <Bar dataKey="stockouts" fill="#EF4444" name="Stockouts" />
-                  <Line
-                    type="monotone"
-                    dataKey="activeDisruptions"
-                    stroke="#F59E0B"
-                    name="Active Disruptions"
-                  />
+                  <Line type="monotone" dataKey="activeDisruptions" stroke="#F59E0B" name="Active Disruptions" />
                 </ComposedChart>
               </ResponsiveContainer>
             </CardContent>
@@ -392,15 +350,11 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 <div
                   key={idx}
                   className="flex items-center"
-                  style={{ minWidth: `${(p.weeks / result.weeklySnapshots.length) * 80}%` }}
+                  style={{ minWidth: `${(p.weeks / result.weeklyData.length) * 80}%` }}
                 >
                   <div
                     className="h-10 flex items-center justify-center text-white text-xs font-semibold rounded"
-                    style={{
-                      backgroundColor: p.color,
-                      width: "100%",
-                      opacity: 0.9,
-                    }}
+                    style={{ backgroundColor: p.color, width: "100%", opacity: 0.9 }}
                   >
                     {p.phase} ({p.weeks}w)
                   </div>
@@ -411,7 +365,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
               {Object.entries(phaseColors).map(([phase, color]) => (
                 <div key={phase} className="flex items-center gap-2 text-xs">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: color }} />
-                  <span className="text-slate-300 capitalize">{phase.replace("-", " ")}</span>
+                  <span className="text-muted-foreground capitalize">{phase.replace("-", " ")}</span>
                 </div>
               ))}
             </div>
@@ -426,19 +380,23 @@ export function SimulationResults({ result }: SimulationResultsProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <KpiCard
                 title="Avg Peak Stockouts"
-                value={result.monteCarlo.statistics.avgPeakStockouts.toFixed(1)}
+                value={result.monteCarlo.avgPeakStockouts.toFixed(1)}
+                icon={<Package className="h-4 w-4" />}
               />
               <KpiCard
                 title="Avg Recovery Week"
-                value={result.monteCarlo.statistics.avgRecoveryWeek.toFixed(1)}
+                value={result.monteCarlo.avgRecoveryWeek.toFixed(1)}
+                icon={<TrendingUp className="h-4 w-4" />}
               />
               <KpiCard
                 title="Avg Min Service Level"
-                value={`${result.monteCarlo.statistics.avgMinServiceLevel.toFixed(1)}%`}
+                value={`${result.monteCarlo.avgMinServiceLevel.toFixed(1)}%`}
+                icon={<Activity className="h-4 w-4" />}
               />
               <KpiCard
                 title="Monte Carlo Runs"
-                value={result.monteCarlo.statistics.runCount.toString()}
+                value={result.monteCarlo.serviceLevelPercentiles.length > 0 ? "Complete" : "N/A"}
+                icon={<BarChart3 className="h-4 w-4" />}
               />
             </div>
 
@@ -450,14 +408,10 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={weeklyData}>
+                    <AreaChart data={result.monteCarlo.serviceLevelPercentiles}>
                       <defs>
                         <linearGradient id="p5p95" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="p25p75" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
                           <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                         </linearGradient>
                       </defs>
@@ -465,22 +419,11 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                       <XAxis {...chartConfig.axis} dataKey="week" />
                       <YAxis {...chartConfig.axis} domain={[0, 100]} />
                       <Tooltip {...chartConfig.tooltip} />
-                      <Area
-                        type="monotone"
-                        dataKey="serviceLevel"
-                        stroke="#3B82F6"
-                        fill="url(#p5p95)"
-                        fillOpacity={0.3}
-                        name="p5-p95"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="serviceLevel"
-                        stroke="#3B82F6"
-                        strokeWidth={2}
-                        dot={false}
-                        name="Median"
-                      />
+                      <Area type="monotone" dataKey="p95" stroke="#3B82F6" fill="url(#p5p95)" fillOpacity={0.3} name="p95" />
+                      <Area type="monotone" dataKey="p75" stroke="#3B82F6" fill="url(#p5p95)" fillOpacity={0.2} name="p75" />
+                      <Line type="monotone" dataKey="p50" stroke="#3B82F6" strokeWidth={2} dot={false} name="Median" />
+                      <Area type="monotone" dataKey="p25" stroke="#3B82F6" fill="none" strokeDasharray="3 3" name="p25" />
+                      <Area type="monotone" dataKey="p5" stroke="#3B82F6" fill="none" strokeDasharray="3 3" name="p5" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -493,7 +436,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={weeklyData}>
+                    <AreaChart data={result.monteCarlo.inventoryPercentiles}>
                       <defs>
                         <linearGradient id="invp5p95" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10B981" stopOpacity={0.2} />
@@ -504,22 +447,9 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                       <XAxis {...chartConfig.axis} dataKey="week" />
                       <YAxis {...chartConfig.axis} />
                       <Tooltip {...chartConfig.tooltip} />
-                      <Area
-                        type="monotone"
-                        dataKey="totalInventory"
-                        stroke="#10B981"
-                        fill="url(#invp5p95)"
-                        fillOpacity={0.3}
-                        name="p5-p95"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="totalInventory"
-                        stroke="#10B981"
-                        strokeWidth={2}
-                        dot={false}
-                        name="Median"
-                      />
+                      <Area type="monotone" dataKey="p95" stroke="#10B981" fill="url(#invp5p95)" fillOpacity={0.3} name="p95" />
+                      <Line type="monotone" dataKey="p50" stroke="#10B981" strokeWidth={2} dot={false} name="Median" />
+                      <Area type="monotone" dataKey="p5" stroke="#10B981" fill="none" strokeDasharray="3 3" name="p5" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -532,17 +462,12 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart
-                      data={result.monteCarlo.distributions.peakStockouts.map((v, i) => ({
-                        bin: i,
-                        count: v,
-                      }))}
-                    >
+                    <BarChart data={result.monteCarlo.peakStockoutDistribution}>
                       <CartesianGrid {...chartConfig.grid} />
-                      <XAxis {...chartConfig.axis} dataKey="bin" />
+                      <XAxis {...chartConfig.axis} dataKey="stockouts" />
                       <YAxis {...chartConfig.axis} />
                       <Tooltip {...chartConfig.tooltip} />
-                      <Bar dataKey="count" fill="#EF4444" />
+                      <Bar dataKey="frequency" fill="#EF4444" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -555,17 +480,12 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart
-                      data={result.monteCarlo.distributions.recoveryWeek.map((v, i) => ({
-                        week: i,
-                        count: v,
-                      }))}
-                    >
+                    <BarChart data={result.monteCarlo.recoveryWeekDistribution}>
                       <CartesianGrid {...chartConfig.grid} />
                       <XAxis {...chartConfig.axis} dataKey="week" />
                       <YAxis {...chartConfig.axis} />
                       <Tooltip {...chartConfig.tooltip} />
-                      <Bar dataKey="count" fill="#3B82F6" />
+                      <Bar dataKey="frequency" fill="#3B82F6" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -597,7 +517,6 @@ export function SimulationResults({ result }: SimulationResultsProps) {
 
             {agentSnapshot.data[selectedWeek] && (
               <>
-                {/* Supplier Status Table */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Supplier Status</CardTitle>
@@ -618,12 +537,9 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                         </TableHeader>
                         <TableBody>
                           {agentSnapshot.data[selectedWeek].suppliers.map((s, idx) => (
-                            <TableRow
-                              key={idx}
-                              className={s.disrupted ? "bg-red-950/20" : ""}
-                            >
+                            <TableRow key={idx} className={s.disrupted ? "bg-destructive/10" : ""}>
                               <TableCell className="font-medium">{s.name}</TableCell>
-                              <TableCell>Tier {s.tier}</TableCell>
+                              <TableCell>{s.tier}</TableCell>
                               <TableCell>{s.region || "N/A"}</TableCell>
                               <TableCell>
                                 {s.disrupted ? (
@@ -632,7 +548,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                                   <Badge variant="outline">Normal</Badge>
                                 )}
                               </TableCell>
-                              <TableCell>{((s.capacityUtilization || 0) * 100).toFixed(0)}%</TableCell>
+                              <TableCell>{((s.capacity || 0) / 10).toFixed(0)}%</TableCell>
                               <TableCell>{(s.riskScore || 0).toFixed(2)}</TableCell>
                               <TableCell>{s.inventory || 0}</TableCell>
                             </TableRow>
@@ -644,7 +560,6 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Manufacturer Performance */}
                   <Card>
                     <CardHeader>
                       <CardTitle>Manufacturer Performance</CardTitle>
@@ -670,7 +585,6 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                     </CardContent>
                   </Card>
 
-                  {/* Distributor Service Levels */}
                   <Card>
                     <CardHeader>
                       <CardTitle>Distributor Service Levels</CardTitle>
@@ -710,130 +624,90 @@ export function SimulationResults({ result }: SimulationResultsProps) {
             <CardContent>
               <div className="overflow-x-auto py-8">
                 <div className="flex items-center justify-between min-w-max gap-8 px-4">
-                  {/* Tier 3 */}
-                  <div className="flex flex-col items-center">
-                    <div className="w-20 h-20 rounded-lg bg-purple-600/20 border-2 border-purple-600 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-400">{networkData.tier3.count}</div>
-                        <div className="text-xs text-purple-300">suppliers</div>
+                  {[
+                    { label: "Tier 3", data: networkData.tier3, color: "purple", sub: "suppliers" },
+                    { label: "Tier 2", data: networkData.tier2, color: "amber", sub: "suppliers" },
+                    { label: "Tier 1", data: networkData.tier1, color: "blue", sub: "suppliers" },
+                  ].map((tier, i) => (
+                    <React.Fragment key={tier.label}>
+                      {i > 0 && <div className="text-2xl text-muted-foreground">→</div>}
+                      <div className="flex flex-col items-center">
+                        <div className={`w-20 h-20 rounded-lg bg-${tier.color}-600/20 border-2 border-${tier.color}-600 flex items-center justify-center`}>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold">{tier.data.count}</div>
+                            <div className="text-xs text-muted-foreground">{tier.sub}</div>
+                          </div>
+                        </div>
+                        {tier.data.disrupted > 0 && (
+                          <Badge variant="destructive" className="mt-2">{tier.data.disrupted} disrupted</Badge>
+                        )}
+                        <div className="text-xs text-muted-foreground mt-2 text-center">{tier.label}</div>
                       </div>
-                    </div>
-                    {networkData.tier3.disrupted > 0 && (
-                      <Badge variant="destructive" className="mt-2">
-                        {networkData.tier3.disrupted} disrupted
-                      </Badge>
-                    )}
-                    <div className="text-xs text-slate-400 mt-2 text-center">Tier 3</div>
-                  </div>
+                    </React.Fragment>
+                  ))}
 
-                  <div className="text-2xl text-slate-500">→</div>
-
-                  {/* Tier 2 */}
-                  <div className="flex flex-col items-center">
-                    <div className="w-20 h-20 rounded-lg bg-amber-600/20 border-2 border-amber-600 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-amber-400">{networkData.tier2.count}</div>
-                        <div className="text-xs text-amber-300">suppliers</div>
-                      </div>
-                    </div>
-                    {networkData.tier2.disrupted > 0 && (
-                      <Badge variant="destructive" className="mt-2">
-                        {networkData.tier2.disrupted} disrupted
-                      </Badge>
-                    )}
-                    <div className="text-xs text-slate-400 mt-2 text-center">Tier 2</div>
-                  </div>
-
-                  <div className="text-2xl text-slate-500">→</div>
-
-                  {/* Tier 1 */}
-                  <div className="flex flex-col items-center">
-                    <div className="w-20 h-20 rounded-lg bg-blue-600/20 border-2 border-blue-600 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-400">{networkData.tier1.count}</div>
-                        <div className="text-xs text-blue-300">suppliers</div>
-                      </div>
-                    </div>
-                    {networkData.tier1.disrupted > 0 && (
-                      <Badge variant="destructive" className="mt-2">
-                        {networkData.tier1.disrupted} disrupted
-                      </Badge>
-                    )}
-                    <div className="text-xs text-slate-400 mt-2 text-center">Tier 1</div>
-                  </div>
-
-                  <div className="text-2xl text-slate-500">→</div>
-
-                  {/* Manufacturing */}
+                  <div className="text-2xl text-muted-foreground">→</div>
                   <div className="flex flex-col items-center">
                     <div className="w-20 h-20 rounded-lg bg-green-600/20 border-2 border-green-600 flex items-center justify-center">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-green-400">{networkData.mfg.count}</div>
-                        <div className="text-xs text-green-300">mfg</div>
+                        <div className="text-xs text-muted-foreground">mfg</div>
                       </div>
                     </div>
                     {networkData.mfg.failed > 0 && (
-                      <Badge variant="destructive" className="mt-2">
-                        {networkData.mfg.failed} failed
-                      </Badge>
+                      <Badge variant="destructive" className="mt-2">{networkData.mfg.failed} failed</Badge>
                     )}
-                    <div className="text-xs text-slate-400 mt-2 text-center">Manufacturing</div>
+                    <div className="text-xs text-muted-foreground mt-2 text-center">Manufacturing</div>
                   </div>
 
-                  <div className="text-2xl text-slate-500">→</div>
-
-                  {/* Distribution */}
+                  <div className="text-2xl text-muted-foreground">→</div>
                   <div className="flex flex-col items-center">
                     <div className="w-20 h-20 rounded-lg bg-cyan-600/20 border-2 border-cyan-600 flex items-center justify-center">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-cyan-400">{networkData.dist.count}</div>
-                        <div className="text-xs text-cyan-300">dist</div>
+                        <div className="text-xs text-muted-foreground">dist</div>
                       </div>
                     </div>
                     {networkData.dist.lowService > 0 && (
-                      <Badge variant="destructive" className="mt-2">
-                        {networkData.dist.lowService} low SL
-                      </Badge>
+                      <Badge variant="destructive" className="mt-2">{networkData.dist.lowService} low SL</Badge>
                     )}
-                    <div className="text-xs text-slate-400 mt-2 text-center">Distribution</div>
+                    <div className="text-xs text-muted-foreground mt-2 text-center">Distribution</div>
                   </div>
 
-                  <div className="text-2xl text-slate-500">→</div>
-
-                  {/* Pharmacy */}
+                  <div className="text-2xl text-muted-foreground">→</div>
                   <div className="flex flex-col items-center">
                     <div className="w-20 h-20 rounded-lg bg-rose-600/20 border-2 border-rose-600 flex items-center justify-center">
                       <div className="text-center">
                         <TrendingUp className="w-8 h-8 text-rose-400 mx-auto mb-1" />
-                        <div className="text-xs text-rose-300">pharmacy</div>
+                        <div className="text-xs text-muted-foreground">pharmacy</div>
                       </div>
                     </div>
-                    <div className="text-xs text-slate-400 mt-8">End Points</div>
+                    <div className="text-xs text-muted-foreground mt-8">End Points</div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 p-4 bg-slate-900/50 rounded-lg">
+              <div className="mt-8 p-4 bg-muted/50 rounded-lg">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
-                    <div className="text-slate-400">Total Suppliers</div>
-                    <div className="text-xl font-semibold text-blue-400">
+                    <div className="text-muted-foreground">Total Suppliers</div>
+                    <div className="text-xl font-semibold">
                       {networkData.tier1.count + networkData.tier2.count + networkData.tier3.count}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Disrupted</div>
-                    <div className="text-xl font-semibold text-red-400">
+                    <div className="text-muted-foreground">Disrupted</div>
+                    <div className="text-xl font-semibold text-destructive">
                       {networkData.tier1.disrupted + networkData.tier2.disrupted + networkData.tier3.disrupted}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Manufacturing</div>
-                    <div className="text-xl font-semibold text-green-400">{networkData.mfg.count}</div>
+                    <div className="text-muted-foreground">Manufacturing</div>
+                    <div className="text-xl font-semibold">{networkData.mfg.count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Distribution</div>
-                    <div className="text-xl font-semibold text-cyan-400">{networkData.dist.count}</div>
+                    <div className="text-muted-foreground">Distribution</div>
+                    <div className="text-xl font-semibold">{networkData.dist.count}</div>
                   </div>
                 </div>
               </div>
