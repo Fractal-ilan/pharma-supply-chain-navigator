@@ -5,6 +5,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { SimulationResult, PharmaConfig as ABMConfig } from "@/lib/pharmaABM";
+import { runSimulation, runMonteCarloSimulation } from "@/lib/pharmaABM";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -28,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// Types (these should match pharmaABM.ts)
+// Local config type for UI controls
 export interface PharmaConfig {
   timeHorizon: number;
   monteCarloRuns: number;
@@ -48,14 +50,6 @@ export interface PharmaConfig {
   manufacturers: number;
   distributors: number;
   pharmacies: number;
-}
-
-export interface SimulationResult {
-  peakStockouts: number;
-  minServiceLevel: number;
-  avgLeadTime: number;
-  costImpact: number;
-  scenario: string;
 }
 
 interface ScenarioPreset {
@@ -202,26 +196,41 @@ export function SimulationControls({
     setIsRunning(true);
     toast.success("Starting simulation...");
 
-    // Use setTimeout(0) to allow React to render the "running" state
-    setTimeout(async () => {
+    setTimeout(() => {
       try {
-        // Mock simulation result - in production this would call runMonteCarloSimulation
-        const mockResult: SimulationResult = {
-          peakStockouts: Math.floor(Math.random() * 150 + 50),
-          minServiceLevel: Math.floor(Math.random() * 30 + 60),
-          avgLeadTime: Math.floor(Math.random() * 20 + 10),
-          costImpact: Math.floor(Math.random() * 5000000 + 1000000),
-          scenario: selectedScenario,
+        const abmConfig: Partial<ABMConfig> = {
+          timeHorizon: config.timeHorizon,
+          monteCarloRuns: config.monteCarloRuns,
+          disruptionStartWeek: config.disruptionStartWeek,
+          disruptionType: config.disruptionType,
+          disruptionTier: config.targetTier,
+          disruptionSeverity: config.disruptionSeverity / 100,
+          disruptionDuration: config.disruptionDuration,
+          nTier1Suppliers: config.tier1Suppliers,
+          nTier2Suppliers: config.tier2Suppliers,
+          nTier3Suppliers: config.tier3Suppliers,
+          nManufacturers: config.manufacturers,
+          nDistributors: config.distributors,
+          nPharmacies: config.pharmacies,
+          enableAIForecasting: config.aiDemandForecasting,
+          enableRBE: config.riskBasedEvaluation,
+          enablePredictiveMaintenance: config.predictiveMaintenance,
+          enableAutonomousInventory: config.autonomousInventory,
+          enableColdChainAI: config.coldChainAi,
         };
 
-        onSimulationComplete(mockResult);
+        const result = config.monteCarloRuns > 1
+          ? runMonteCarloSimulation(abmConfig)
+          : runSimulation(abmConfig);
+
+        onSimulationComplete(result);
 
         const presetName = SCENARIO_PRESETS.find(
           (s) => s.id === selectedScenario
         )?.name || "Custom";
 
         toast.success(
-          `Simulation complete! Peak stockouts: ${mockResult.peakStockouts}, Min service level: ${mockResult.minServiceLevel}%`,
+          `Simulation complete! Peak stockouts: ${result.summary.maxStockouts}, Min service level: ${result.summary.minServiceLevel.toFixed(1)}%`,
           {
             description: `Scenario: ${presetName}`,
           }
@@ -234,7 +243,7 @@ export function SimulationControls({
         setIsRunning(false);
       }
     }, 0);
-  }, [selectedScenario, onSimulationComplete, setIsRunning]);
+  }, [config, selectedScenario, onSimulationComplete, setIsRunning]);
 
   const handleReset = useCallback(() => {
     setConfig(DEFAULT_CONFIG);
