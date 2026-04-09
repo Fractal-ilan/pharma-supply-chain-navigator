@@ -3,8 +3,15 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import OverviewPage from "@/pages/OverviewPage";
+import VulnerabilityPage from "@/pages/VulnerabilityPage";
+import ScenarioPage from "@/pages/ScenarioPage";
+import ShortagePage from "@/pages/ShortagePage";
+import InventoryPage from "@/pages/InventoryPage";
+import ColdChainPage from "@/pages/ColdChainPage";
+import CompliancePage from "@/pages/CompliancePage";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -14,11 +21,18 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <DashboardLayout>
+          <Routes>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/vulnerability" element={<VulnerabilityPage />} />
+            <Route path="/scenarios" element={<ScenarioPage />} />
+            <Route path="/shortage" element={<ShortagePage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/cold-chain" element={<ColdChainPage />} />
+            <Route path="/compliance" element={<CompliancePage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </DashboardLayout>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
