@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { scenarioData, scenarioLabels, scenarioColors } from "@/data/scenarios";
+import { scenarioData, scenarioLabels, scenarioColors, TOTAL_WEEKS, last } from "@/data";
 import {
-  Line, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  Line, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
 } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { WeekRangeSlider, useWeekRange } from "@/components/WeekRangeSlider";
+import { KpiCard } from "@/components/KpiCard";
 
 const metrics = [
   { key: "Service_Level", label: "Service Level", fmt: (v: number) => `${(v * 100).toFixed(1)}%` },
@@ -20,6 +22,7 @@ const scenarioKeys = Object.keys(scenarioData) as (keyof typeof scenarioData)[];
 
 export default function ScenarioPage() {
   const [active, setActive] = useState<Set<string>>(new Set(scenarioKeys));
+  const { startWeek, endWeek } = useWeekRange();
 
   const toggle = (key: string) => {
     const next = new Set(active);
@@ -28,16 +31,32 @@ export default function ScenarioPage() {
     setActive(next);
   };
 
-  const buildChartData = (metricKey: string) =>
-    Array.from({ length: 52 }, (_, i) => {
+  const buildChartData = (metricKey: string) => {
+    const data = [];
+    for (let i = startWeek; i < endWeek; i++) {
       const point: Record<string, number> = { week: i + 1 };
       for (const sk of scenarioKeys) {
         if (active.has(sk)) {
-          point[sk] = (scenarioData[sk] as Record<string, number[]>)[metricKey][i];
+          point[sk] = scenarioData[sk][metricKey][i];
         }
       }
-      return point;
-    });
+      data.push(point);
+    }
+    return data;
+  };
+
+  // KPI calculations
+  const finalWeekIndex = TOTAL_WEEKS - 1;
+  const worstServiceLevel = Math.min(
+    ...Array.from(active).map((sk) => scenarioData[sk].Service_Level[finalWeekIndex])
+  );
+  const peakDisruptions = Math.max(
+    ...Array.from(active).map((sk) => Math.max(...scenarioData[sk].Active_Disruptions))
+  );
+  const totalStockouts = Array.from(active).reduce(
+    (sum, sk) => sum + scenarioData[sk].Stockouts[finalWeekIndex],
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -56,6 +75,29 @@ export default function ScenarioPage() {
         ))}
       </div>
 
+      <WeekRangeSlider />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <KpiCard
+          title="Worst Service Level"
+          value={`${(worstServiceLevel * 100).toFixed(1)}%`}
+          icon={null}
+          goodDirection="up"
+        />
+        <KpiCard
+          title="Peak Disruptions"
+          value={String(Math.round(peakDisruptions))}
+          icon={null}
+          goodDirection="down"
+        />
+        <KpiCard
+          title="Total Stockouts"
+          value={String(Math.round(totalStockouts))}
+          icon={null}
+          goodDirection="down"
+        />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {metrics.map((m) => (
           <Card key={m.key}>
@@ -68,6 +110,9 @@ export default function ScenarioPage() {
                     <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={10} />
                     <YAxis stroke="hsl(215, 20%, 65%)" fontSize={10} />
                     <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
+                    {m.key === "Service_Level" && (
+                      <Brush dataKey="week" height={20} stroke="hsl(215, 20%, 65%)" />
+                    )}
                     {scenarioKeys.filter((k) => active.has(k)).map((k) => (
                       <Line key={k} type="monotone" dataKey={k} stroke={scenarioColors[k]} strokeWidth={1.5} dot={false} name={scenarioLabels[k]} />
                     ))}
@@ -94,7 +139,7 @@ export default function ScenarioPage() {
                 <TableRow key={sk}>
                   <TableCell className="font-medium" style={{ color: scenarioColors[sk] }}>{scenarioLabels[sk]}</TableCell>
                   {metrics.map((m) => {
-                    const arr = (scenarioData[sk] as Record<string, number[]>)[m.key];
+                    const arr = scenarioData[sk][m.key];
                     return <TableCell key={m.key}>{m.fmt(arr[arr.length - 1])}</TableCell>;
                   })}
                 </TableRow>

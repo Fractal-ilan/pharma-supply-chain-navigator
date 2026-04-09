@@ -1,7 +1,15 @@
+import { useState } from "react";
 import { KpiCard } from "@/components/KpiCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { timeseriesData } from "@/data/timeseries";
-import { aiComparisonData } from "@/data/aiComparison";
+import { WeekRangeSlider, useWeekRange } from "@/components/WeekRangeSlider";
+import {
+  timeseriesData,
+  aiComparisonData,
+  TOTAL_WEEKS,
+  last,
+  avg,
+  pctChange,
+} from "@/data";
 import {
   Activity, AlertTriangle, Users, Thermometer, Brain, ShieldCheck,
   ArrowRight,
@@ -10,17 +18,6 @@ import {
   Area, AreaChart, Line, LineChart, ResponsiveContainer,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, Legend,
 } from "recharts";
-
-const ts = timeseriesData;
-const last = (arr: number[]) => arr[arr.length - 1];
-const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
-const pctChange = (arr: number[]) => {
-  const recent = arr.slice(-4);
-  const prev = arr.slice(-8, -4);
-  const rAvg = avg(recent);
-  const pAvg = avg(prev);
-  return pAvg === 0 ? 0 : ((rAvg - pAvg) / pAvg) * 100;
-};
 
 const tiers = [
   { name: "Tier 3", agents: 8, disrupted: 1, color: "bg-blue-900" },
@@ -32,63 +29,89 @@ const tiers = [
 ];
 
 export default function OverviewPage() {
-  const slChart = ts.Service_Level.map((v, i) => ({ week: i + 1, value: v * 100 }));
-  const aiChart = ts.Service_Level.map((_, i) => ({
-    week: i + 1,
-    ai: aiComparisonData.ai_enabled.Service_Level[i] * 100,
-    noAi: aiComparisonData.no_ai.Service_Level[i] * 100,
+  const { range, setRange, sliceArr } = useWeekRange(TOTAL_WEEKS);
+
+  const slicedServiceLevel = sliceArr(timeseriesData.Service_Level);
+  const slicedActiveDisruptions = sliceArr(timeseriesData.Active_Disruptions);
+  const slicedPatientsServed = sliceArr(timeseriesData.Patients_Served);
+  const slicedSpoiledUnits = sliceArr(timeseriesData.Spoiled_Units);
+  const slicedShortagePredictions = sliceArr(timeseriesData.Shortage_Predictions);
+  const slicedComplianceViolations = sliceArr(timeseriesData.Compliance_Violations);
+  const slicedTotalInventory = sliceArr(timeseriesData.Total_Inventory);
+
+  const slChart = slicedServiceLevel.map((v, i) => ({
+    week: range[0] + i + 1,
+    value: v * 100,
+  }));
+
+  const aiChart = slicedServiceLevel.map((_, i) => ({
+    week: range[0] + i + 1,
+    ai: aiComparisonData.ai_enabled.Service_Level[range[0] + i] * 100,
+    noAi: aiComparisonData.no_ai.Service_Level[range[0] + i] * 100,
+  }));
+
+  const inventoryChart = slicedTotalInventory.map((v, i) => ({
+    week: range[0] + i + 1,
+    value: v,
   }));
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader><CardTitle className="text-base">Time Period</CardTitle></CardHeader>
+        <CardContent className="pt-4">
+          <WeekRangeSlider totalWeeks={TOTAL_WEEKS} value={range} onChange={setRange} />
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Service Level"
-          value={`${(avg(ts.Service_Level) * 100).toFixed(1)}%`}
+          value={`${(avg(slicedServiceLevel) * 100).toFixed(1)}%`}
           icon={<Activity className="h-4 w-4" />}
-          trend={{ value: pctChange(ts.Service_Level), direction: pctChange(ts.Service_Level) >= 0 ? "up" : "down" }}
+          trend={{ value: pctChange(slicedServiceLevel), direction: pctChange(slicedServiceLevel) >= 0 ? "up" : "down" }}
           goodDirection="up"
-          sparklineData={ts.Service_Level.slice(-12)}
+          sparklineData={slicedServiceLevel.slice(-12)}
         />
         <KpiCard
           title="Active Disruptions"
-          value={String(last(ts.Active_Disruptions))}
+          value={String(last(slicedActiveDisruptions))}
           icon={<AlertTriangle className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(ts.Active_Disruptions)), direction: pctChange(ts.Active_Disruptions) <= 0 ? "down" : "up" }}
+          trend={{ value: Math.abs(pctChange(slicedActiveDisruptions)), direction: pctChange(slicedActiveDisruptions) <= 0 ? "down" : "up" }}
           goodDirection="down"
-          sparklineData={ts.Active_Disruptions.slice(-12)}
+          sparklineData={slicedActiveDisruptions.slice(-12)}
         />
         <KpiCard
           title="Patients Served"
-          value={last(ts.Patients_Served).toLocaleString()}
+          value={last(slicedPatientsServed).toLocaleString()}
           icon={<Users className="h-4 w-4" />}
-          trend={{ value: pctChange(ts.Patients_Served), direction: "up" }}
+          trend={{ value: pctChange(slicedPatientsServed), direction: "up" }}
           goodDirection="up"
-          sparklineData={ts.Patients_Served.slice(-12)}
+          sparklineData={slicedPatientsServed.slice(-12)}
         />
         <KpiCard
           title="Cold Chain Spoilage"
-          value={String(last(ts.Spoiled_Units))}
+          value={String(last(slicedSpoiledUnits))}
           icon={<Thermometer className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(ts.Spoiled_Units)), direction: pctChange(ts.Spoiled_Units) >= 0 ? "up" : "down" }}
+          trend={{ value: Math.abs(pctChange(slicedSpoiledUnits)), direction: pctChange(slicedSpoiledUnits) >= 0 ? "up" : "down" }}
           goodDirection="down"
-          sparklineData={ts.Spoiled_Units.slice(-12)}
+          sparklineData={slicedSpoiledUnits.slice(-12)}
         />
         <KpiCard
           title="Shortage Predictions"
-          value={String(last(ts.Shortage_Predictions))}
+          value={String(last(slicedShortagePredictions))}
           icon={<Brain className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(ts.Shortage_Predictions)), direction: "up" }}
+          trend={{ value: Math.abs(pctChange(slicedShortagePredictions)), direction: "up" }}
           goodDirection="neutral"
-          sparklineData={ts.Shortage_Predictions.slice(-12)}
+          sparklineData={slicedShortagePredictions.slice(-12)}
         />
         <KpiCard
           title="Compliance Violations"
-          value={String(last(ts.Compliance_Violations))}
+          value={String(last(slicedComplianceViolations))}
           icon={<ShieldCheck className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(ts.Compliance_Violations)), direction: pctChange(ts.Compliance_Violations) >= 0 ? "up" : "down" }}
+          trend={{ value: Math.abs(pctChange(slicedComplianceViolations)), direction: pctChange(slicedComplianceViolations) >= 0 ? "up" : "down" }}
           goodDirection="down"
-          sparklineData={ts.Compliance_Violations.slice(-12)}
+          sparklineData={slicedComplianceViolations.slice(-12)}
         />
       </div>
 
@@ -107,7 +130,7 @@ export default function OverviewPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 19%, 25%)" />
                   <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                  <YAxis domain={[60, 100]} stroke="hsl(215, 20%, 65%)" fontSize={12} />
+                  <YAxis domain={[0, 100]} stroke="hsl(215, 20%, 65%)" fontSize={12} />
                   <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
                   <ReferenceLine y={95} stroke="#EF4444" strokeDasharray="5 5" label={{ value: "Target 95%", fill: "#EF4444", fontSize: 11 }} />
                   <Area type="monotone" dataKey="value" stroke="#3B82F6" fill="url(#slGrad)" strokeWidth={2} name="Service Level %" />
@@ -136,6 +159,29 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Inventory Trend</CardTitle></CardHeader>
+        <CardContent>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={inventoryChart}>
+                <defs>
+                  <linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 19%, 25%)" />
+                <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={12} />
+                <YAxis stroke="hsl(215, 20%, 65%)" fontSize={12} />
+                <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} formatter={(v) => [(v as number).toLocaleString(), "Units"]} />
+                <Area type="monotone" dataKey="value" stroke="#10B981" fill="url(#invGrad)" strokeWidth={2} name="Total Inventory" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Supply Chain at a Glance</CardTitle></CardHeader>
