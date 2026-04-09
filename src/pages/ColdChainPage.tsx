@@ -63,7 +63,6 @@ export default function ColdChainPage() {
                 <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
                 <Bar dataKey="risk" name="Risk Score %" radius={[0, 4, 4, 0]}>
                   {regionRisk.map((d, i) => {
-                    const { Cell } = require("recharts");
                     const color = d.risk > 60 ? "#EF4444" : d.risk > 40 ? "#F59E0B" : "#10B981";
                     return <Cell key={i} fill={color} />;
                   })}
