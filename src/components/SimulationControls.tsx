@@ -30,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// Types (these should match pharmaABM.ts)
+// Local config type for UI controls
 export interface PharmaConfig {
   timeHorizon: number;
   monteCarloRuns: number;
@@ -50,14 +50,6 @@ export interface PharmaConfig {
   manufacturers: number;
   distributors: number;
   pharmacies: number;
-}
-
-export interface SimulationResult {
-  peakStockouts: number;
-  minServiceLevel: number;
-  avgLeadTime: number;
-  costImpact: number;
-  scenario: string;
 }
 
 interface ScenarioPreset {
