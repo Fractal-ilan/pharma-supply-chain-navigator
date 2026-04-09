@@ -22,7 +22,9 @@ const scenarioKeys = Object.keys(scenarioData) as (keyof typeof scenarioData)[];
 
 export default function ScenarioPage() {
   const [active, setActive] = useState<Set<string>>(new Set(scenarioKeys));
-  const { startWeek, endWeek } = useWeekRange();
+  const { range, setRange } = useWeekRange(TOTAL_WEEKS);
+  const startWeek = range[0];
+  const endWeek = range[1] + 1;
 
   const toggle = (key: string) => {
     const next = new Set(active);
