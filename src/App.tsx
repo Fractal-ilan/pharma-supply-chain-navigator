@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import SimulationPage from "@/pages/SimulationPage";
 import OverviewPage from "@/pages/OverviewPage";
 import VulnerabilityPage from "@/pages/VulnerabilityPage";
 import ScenarioPage from "@/pages/ScenarioPage";
@@ -23,7 +24,8 @@ const App = () => (
       <BrowserRouter>
         <DashboardLayout>
           <Routes>
-            <Route path="/" element={<OverviewPage />} />
+            <Route path="/" element={<SimulationPage />} />
+            <Route path="/overview" element={<OverviewPage />} />
             <Route path="/vulnerability" element={<VulnerabilityPage />} />
             <Route path="/scenarios" element={<ScenarioPage />} />
             <Route path="/shortage" element={<ShortagePage />} />

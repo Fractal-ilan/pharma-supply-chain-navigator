@@ -11,6 +11,7 @@ import {
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
+  Play,
   LayoutDashboard,
   Network,
   FlaskConical,
@@ -21,7 +22,8 @@ import {
 } from "lucide-react";
 
 const items = [
-  { title: "Overview", url: "/", icon: LayoutDashboard },
+  { title: "Simulation", url: "/", icon: Play },
+  { title: "Overview", url: "/overview", icon: LayoutDashboard },
   { title: "Vulnerability Map", url: "/vulnerability", icon: Network },
   { title: "Scenario Testing", url: "/scenarios", icon: FlaskConical },
   { title: "Shortage Prediction", url: "/shortage", icon: AlertTriangle },
