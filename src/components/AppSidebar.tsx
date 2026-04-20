@@ -19,6 +19,7 @@ import {
   RefreshCcw,
   Thermometer,
   ShieldCheck,
+  ClipboardCheck,
 } from "lucide-react";
 
 const items = [
@@ -30,6 +31,7 @@ const items = [
   { title: "Inventory Balancing", url: "/inventory", icon: RefreshCcw },
   { title: "Cold Chain", url: "/cold-chain", icon: Thermometer },
   { title: "Compliance", url: "/compliance", icon: ShieldCheck },
+  { title: "Validation Report", url: "/validation", icon: ClipboardCheck },
 ];
 
 export function AppSidebar() {
