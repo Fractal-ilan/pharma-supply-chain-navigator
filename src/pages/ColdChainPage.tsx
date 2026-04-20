@@ -64,8 +64,8 @@ export default function ColdChainPage() {
       const noaiS = data.scenarios[sc]?.["No-AI"]?.summary;
       return {
         name: sc.replace("China Raw Material ", "China ").replace(" API Export Ban", " Ban"),
-        "AI Spoilage": aiS?.avgSpoilage?.toFixed(0) || 0,
-        "No-AI Spoilage": noaiS?.avgSpoilage?.toFixed(0) || 0,
+        "AI Spoilage": Math.round(aiS?.avgSpoilage || 0),
+        "No-AI Spoilage": Math.round(noaiS?.avgSpoilage || 0),
       };
     });
   }, []);

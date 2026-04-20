@@ -56,8 +56,8 @@ export default function ShortagePage() {
       const noaiS = data.scenarios[sc]?.["No-AI"]?.summary;
       return {
         name: sc.replace("China Raw Material ", "China ").replace(" API Export Ban", " Ban"),
-        "AI Stockouts": aiS?.avgStockouts?.toFixed(0) || 0,
-        "No-AI Stockouts": noaiS?.avgStockouts?.toFixed(0) || 0,
+        "AI Stockouts": Math.round(aiS?.avgStockouts || 0),
+        "No-AI Stockouts": Math.round(noaiS?.avgStockouts || 0),
       };
     });
   }, []);
