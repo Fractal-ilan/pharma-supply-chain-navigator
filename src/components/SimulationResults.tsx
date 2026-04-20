@@ -79,7 +79,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
     if (!result) return [];
     return result.weeklyData.map((snapshot, idx) => ({
       week: idx,
-      serviceLevel: snapshot.serviceLevel,
+      serviceLevel: snapshot.serviceLevel * 100,  // Convert 0-1 decimal to 0-100 percentage
       totalInventory: snapshot.totalInventory,
       stockouts: snapshot.stockouts,
       activeDisruptions: snapshot.activeDisruptions,
@@ -94,7 +94,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
     if (!result) return { value: "0", week: 0 };
     const min = Math.min(...result.weeklyData.map(s => s.serviceLevel));
     const week = result.weeklyData.findIndex(s => s.serviceLevel === min);
-    return { value: min.toFixed(1), week };
+    return { value: (min * 100).toFixed(1), week };  // Convert 0-1 decimal to percentage
   }, [result]);
 
   const peakStockouts = useMemo(() => {
@@ -105,7 +105,7 @@ export function SimulationResults({ result }: SimulationResultsProps) {
   const recoveryWeek = useMemo(() => {
     if (!result) return 0;
     const idx = result.weeklyData.findIndex(
-      s => s.serviceLevel >= 95 && s.phase === "recovery"
+      s => s.serviceLevel >= 0.95 && s.phase === "recovery"  // Compare against 0-1 decimal
     );
     return idx >= 0 ? idx : result.weeklyData.length - 1;
   }, [result]);
@@ -385,12 +385,12 @@ export function SimulationResults({ result }: SimulationResultsProps) {
               />
               <KpiCard
                 title="Avg Recovery Week"
-                value={result.monteCarlo.avgRecoveryWeek.toFixed(1)}
+                value={result.monteCarlo.avgRecoveryWeek >= 90 ? "No Recovery" : result.monteCarlo.avgRecoveryWeek.toFixed(1)}
                 icon={<TrendingUp className="h-4 w-4" />}
               />
               <KpiCard
                 title="Avg Min Service Level"
-                value={`${result.monteCarlo.avgMinServiceLevel.toFixed(1)}%`}
+                value={`${(result.monteCarlo.avgMinServiceLevel * 100).toFixed(1)}%`}
                 icon={<Activity className="h-4 w-4" />}
               />
               <KpiCard
@@ -408,7 +408,14 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={result.monteCarlo.serviceLevelPercentiles}>
+                    <AreaChart data={result.monteCarlo.serviceLevelPercentiles.map(d => ({
+                      ...d,
+                      p5: d.p5 * 100,
+                      p25: d.p25 * 100,
+                      p50: d.p50 * 100,
+                      p75: d.p75 * 100,
+                      p95: d.p95 * 100,
+                    }))}>
                       <defs>
                         <linearGradient id="p5p95" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
@@ -480,7 +487,10 @@ export function SimulationResults({ result }: SimulationResultsProps) {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={result.monteCarlo.recoveryWeekDistribution}>
+                    <BarChart data={result.monteCarlo.recoveryWeekDistribution.map(d => ({
+                      ...d,
+                      week: d.week >= 99 ? "No Recovery" : `W${d.week}`,
+                    }))}>
                       <CartesianGrid {...chartConfig.grid} />
                       <XAxis {...chartConfig.axis} dataKey="week" />
                       <YAxis {...chartConfig.axis} />

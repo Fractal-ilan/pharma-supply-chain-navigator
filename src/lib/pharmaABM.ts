@@ -185,10 +185,10 @@ class SupplierAgent {
   tier: string;
   region: string;
   rng: SeededRNG;
-  capacity: number = 1000;
+  capacity: number = 2000;
   production_rate: number;
   defect_rate: number;
-  inventory: number = 500;
+  inventory: number = 150;
   lead_time: number;
   disrupted: boolean = false;
   disruption_weeks_remaining: number = 0;
@@ -200,39 +200,66 @@ class SupplierAgent {
     this.tier = tier;
     this.region = region;
     this.rng = rng;
-    this.production_rate = 100 + rng.nextInt(50);
-    this.defect_rate = 0.01 + rng.nextFloat() * 0.03;
+    this.production_rate = 300 + rng.nextInt(60);
+    this.defect_rate = 0.01 + rng.nextFloat() * 0.02;
     this.lead_time = tier === 'tier3' ? 4 : tier === 'tier2' ? 3 : 2;
     this.risk_score = REGIONAL_RISK_SCORES[region] || 0.35;
   }
 
+  disruption_severity: number = 0.5; // How much production is reduced when disrupted
+
   decide(): { produce: number } {
     if (this.disrupted && this.disruption_weeks_remaining > 0) {
-      return { produce: Math.round(this.production_rate * 0.3) };
+      // Production reduction scales with disruption severity
+      const output_fraction = Math.max(0.05, 1 - this.disruption_severity);
+      return { produce: Math.round(this.production_rate * output_fraction) };
     }
     return { produce: this.production_rate };
   }
 
-  update(demand: number): void {
+  // Produce goods and add to inventory
+  produce(): void {
     const { produce } = this.decide();
     const output = Math.round(produce * (1 - this.defect_rate));
-    this.inventory = Math.max(0, Math.min(this.capacity, this.inventory + output - demand));
+    this.inventory = Math.min(this.capacity, this.inventory + output);
+  }
 
+  // Ship goods downstream: returns amount shipped, reduces inventory
+  // Disrupted suppliers have impaired logistics (frozen exports, locked warehouses, etc.)
+  ship(requested: number): number {
+    if (this.disrupted && this.disruption_severity > 0.2) {
+      // Logistics impairment: higher severity = less can be shipped
+      const ship_fraction = Math.max(0.05, 1 - this.disruption_severity * 0.85);
+      const max_ship = Math.round(this.inventory * ship_fraction);
+      const shipped = Math.min(max_ship, requested);
+      this.inventory -= shipped;
+      return shipped;
+    }
+    const shipped = Math.min(this.inventory, requested);
+    this.inventory -= shipped;
+    return shipped;
+  }
+
+  // Receive goods from upstream: adds to inventory
+  receive(amount: number): void {
+    this.inventory = Math.min(this.capacity, this.inventory + amount);
+  }
+
+  // End-of-week updates: disruption management, random events
+  update(demand: number): void {
     if (this.disrupted) {
       this.disruption_weeks_remaining--;
       if (this.disruption_weeks_remaining <= 0) {
         this.disrupted = false;
         this.inventory = Math.round(this.inventory * (1 + this.recovery_rate));
-      } else {
-        // Gradual recovery while still disrupted
-        this.inventory = Math.round(this.inventory * (1 + this.recovery_rate * 0.5));
       }
     }
 
-    // Random event checks
-    if (this.rng.nextFloat() < this.risk_score * (EVENT_PROBABILITIES.natural_disaster + 0.01)) {
+    // Random event checks (rare background events, ~0.3% per week per supplier)
+    if (!this.disrupted && this.rng.nextFloat() < this.risk_score * 0.005) {
       this.disrupted = true;
-      this.disruption_weeks_remaining = this.rng.nextInt(4) + 2;
+      this.disruption_severity = 0.3 + this.rng.nextFloat() * 0.3;
+      this.disruption_weeks_remaining = this.rng.nextInt(3) + 1;
     }
   }
 }
@@ -245,9 +272,9 @@ class ManufacturerAgent {
   quality_score: number = 0.98;
   batches_produced: number = 0;
   batches_failed: number = 0;
-  inventory: number = 300;
-  capacity: number = 500;
-  yield_rate: number = 0.95;
+  inventory: number = 150;
+  capacity: number = 2000;
+  yield_rate: number = 0.97;
   enableRBE: boolean = false;
   enablePredictiveMaintenance: boolean = false;
 
@@ -260,7 +287,8 @@ class ManufacturerAgent {
   }
 
   decide(supplier_inventory: number): { batch_size: number; duration_hours: number } {
-    const batch_size = Math.min(100, Math.floor(supplier_inventory * 0.5));
+    // Batch size: process nearly all available supply, capped by capacity
+    const batch_size = Math.min(this.capacity, Math.floor(supplier_inventory * 0.92));
     const review_duration = this.enableRBE ? 2 : 8;
     return { batch_size, duration_hours: review_duration };
   }
@@ -268,25 +296,28 @@ class ManufacturerAgent {
   update(supplier_inventory: number): number {
     const { batch_size, duration_hours } = this.decide(supplier_inventory);
 
-    // Quality control pass rate
-    const qc_pass_rate = this.enableRBE ? 0.95 : 0.60;
-    const passed = this.rng.nextFloat() < qc_pass_rate ? batch_size : 0;
+    // Quality control: RBE gives high pass rate; without RBE still competent
+    const qc_pass_rate = this.enableRBE ? 0.97 : 0.87;
+    const passed = this.rng.nextFloat() < qc_pass_rate ? batch_size : Math.round(batch_size * 0.5);
 
     this.batches_produced++;
-    if (passed === 0) this.batches_failed++;
+    if (passed < batch_size * 0.9) this.batches_failed++;
 
     const output = Math.round(passed * this.yield_rate * this.equipment_health);
     this.inventory = Math.min(this.capacity, this.inventory + output);
 
-    // Equipment degradation
-    this.equipment_health = Math.max(0.5, this.equipment_health - 0.02);
+    // Equipment degradation (slower: 0.5% per week)
+    this.equipment_health = Math.max(0.7, this.equipment_health - 0.005);
 
-    // Predictive maintenance
-    if (this.enablePredictiveMaintenance && this.equipment_health < 0.4) {
-      this.equipment_health = 0.95;
+    // Predictive maintenance restores equipment proactively
+    if (this.enablePredictiveMaintenance && this.equipment_health < 0.85) {
+      this.equipment_health = 0.98;
     }
 
-    return Math.min(batch_size, output);
+    // Ship from inventory
+    const ship = Math.min(this.inventory, batch_size);
+    this.inventory -= ship;
+    return ship;
   }
 }
 
@@ -294,8 +325,8 @@ class DistributorAgent {
   name: string;
   region: string;
   rng: SeededRNG;
-  inventory: number = 400;
-  capacity: number = 800;
+  inventory: number = 200;
+  capacity: number = 2400;
   demand_forecast: number = 100;
   enableAIForecasting: boolean = false;
   enableColdChainAI: boolean = false;
@@ -323,14 +354,12 @@ class DistributorAgent {
     const { forecast } = this.decide(actual_demand);
     this.forecast_error = Math.abs(forecast - actual_demand) / (actual_demand || 1);
 
-    // Cold chain processing
+    // Cold chain processing — AI reduces breach probability and loss severity
     let receive = supplier_output;
-    if (this.enableColdChainAI && this.rng.nextFloat() < COLD_CHAIN_BREACH_RATE) {
-      const breach_loss = Math.round(receive * 0.2);
-      receive -= breach_loss;
-      this.spoiled_units += breach_loss;
-    } else if (this.rng.nextFloat() < COLD_CHAIN_BREACH_RATE * 0.5) {
-      const spoil = Math.round(receive * 0.1);
+    const breach_prob = this.enableColdChainAI ? COLD_CHAIN_BREACH_RATE * 0.25 : COLD_CHAIN_BREACH_RATE;
+    const breach_loss_pct = this.enableColdChainAI ? 0.05 : 0.15;
+    if (this.rng.nextFloat() < breach_prob) {
+      const spoil = Math.round(receive * breach_loss_pct);
       receive -= spoil;
       this.spoiled_units += spoil;
     }
@@ -534,23 +563,225 @@ class PharmaSupplyChainSimulation {
   }
 
   private applyDisruption(week: number): void {
-    if (week !== this.config.disruptionStartWeek) return;
+    const start = this.config.disruptionStartWeek;
+    const dur = this.config.disruptionDuration;
+    const sev = this.config.disruptionSeverity;
+    const type = this.config.disruptionType;
 
-    let target_agents: SupplierAgent[] = [];
+    // Only active during the disruption window
+    if (week < start || week > start + dur) return;
+
+    const weeks_in = week - start;
+
+    // Get target tier agents
+    let primary_agents: SupplierAgent[] = [];
     if (this.config.disruptionTier === 'tier1') {
-      target_agents = this.tier1_suppliers;
+      primary_agents = this.tier1_suppliers;
     } else if (this.config.disruptionTier === 'tier2') {
-      target_agents = this.tier2_suppliers;
+      primary_agents = this.tier2_suppliers;
     } else {
-      target_agents = this.tier3_suppliers;
+      primary_agents = this.tier3_suppliers;
     }
 
-    const n_to_disrupt = Math.ceil(target_agents.length * this.config.disruptionSeverity);
-    for (let i = 0; i < n_to_disrupt; i++) {
-      const agent = target_agents[i];
-      agent.disrupted = true;
-      agent.disruption_weeks_remaining = this.config.disruptionDuration;
-      this.disrupted_agents.add(agent.name);
+    // Type-specific disruption propagation patterns
+    // Helper to disrupt agents AND optionally destroy inventory
+    const disruptAgents = (agents: SupplierAgent[], fraction: number, severity: number, duration: number, inventoryDestroy: number = 0) => {
+      const n = Math.ceil(agents.length * Math.min(1.0, fraction));
+      for (let i = 0; i < n; i++) {
+        agents[i].disrupted = true;
+        agents[i].disruption_severity = Math.min(0.98, severity);
+        agents[i].disruption_weeks_remaining = duration;
+        this.disrupted_agents.add(agents[i].name);
+        // Destroy a fraction of existing inventory (physical damage, seizure, recall, etc.)
+        if (inventoryDestroy > 0) {
+          agents[i].inventory = Math.round(agents[i].inventory * (1 - inventoryDestroy));
+        }
+      }
+    };
+    // Helper to destroy manufacturer inventory
+    const destroyMfgInventory = (fraction: number) => {
+      for (const m of this.manufacturers) {
+        m.inventory = Math.round(m.inventory * (1 - fraction));
+      }
+    };
+    // Helper to destroy distributor inventory
+    const destroyDistInventory = (fraction: number) => {
+      for (const d of this.distributors) {
+        d.inventory = Math.round(d.inventory * (1 - fraction));
+      }
+    };
+
+    if (type === 'trade_dispute' || type === 'regulatory_change') {
+      // INDIA EXPORT BAN: Devastating, multi-tier cascade with inventory seizure
+      // Government seizes export-bound goods; gradual ramp then total blockade
+      if (weeks_in === 0) {
+        // Initial export freeze — seize 60% of tier2 inventory
+        disruptAgents(primary_agents, 1.0, 0.9, dur, 0.6);
+      }
+      const ramp = Math.min(1.0, weeks_in / 4);
+      if (weeks_in > 0 && weeks_in <= 4) {
+        // Escalating: more agents affected, severity increases
+        disruptAgents(primary_agents, ramp, 0.85 + ramp * 0.1, dur - weeks_in + 4, 0);
+      }
+      // Week 3: cascade to tier1 (manufacturers lose API supply) + destroy 30% of mfg inventory (spoiling WIP)
+      if (weeks_in === 3) {
+        disruptAgents(this.tier1_suppliers, sev * 0.7, 0.75, dur - 3, 0.3);
+        destroyMfgInventory(0.3);
+      }
+      // Week 6: cascade to tier3 (raw materials blocked)
+      if (weeks_in === 6) {
+        disruptAgents(this.tier3_suppliers, sev * 0.5, 0.6, Math.max(8, dur - 6), 0.2);
+      }
+      // Week 10: distributor stockpiles depleted, destroy 20% of remaining dist inventory (expired product)
+      if (weeks_in === 10) {
+        destroyDistInventory(0.2);
+      }
+      // Sustained: ban keeps renewing
+      if (weeks_in > 0 && weeks_in <= dur) {
+        for (const a of primary_agents) {
+          if (a.disrupted && a.disruption_weeks_remaining < 4) {
+            a.disruption_weeks_remaining = 4;
+            a.disruption_severity = Math.max(a.disruption_severity, 0.8);
+          }
+        }
+      }
+
+    } else if (type === 'pandemic_wave') {
+      // CHINA LOCKDOWN: Sustained nationwide shutdown — broad decline, incomplete recovery
+      // Unlike hurricane (instant damage + fast recovery), lockdown is PERSISTENT
+      if (weeks_in === 0) {
+        // Wave 1: Hard lockdown — tier3 AND tier2 simultaneously
+        disruptAgents(primary_agents, 1.0, 0.95, 12, 0.8);
+        disruptAgents(this.tier2_suppliers, 0.9, 0.9, 10, 0.6);
+        destroyMfgInventory(0.4);
+      }
+      // Week 2: cascade hits tier1
+      if (weeks_in === 2) {
+        disruptAgents(this.tier1_suppliers, sev * 0.7, 0.7, 8, 0.3);
+        destroyDistInventory(0.2);
+      }
+      // SUSTAINED DRAIN: Every 2 weeks during lockdown, goods expire in locked warehouses
+      if (weeks_in > 0 && weeks_in <= dur && weeks_in % 2 === 0) {
+        // Ongoing inventory decay from locked-down supply chain
+        destroyMfgInventory(0.1);
+        destroyDistInventory(0.08);
+        // Keep refreshing disruption on primary agents (lockdown doesn't lift early)
+        for (const a of primary_agents) {
+          if (a.disruption_weeks_remaining < 4) {
+            a.disruption_weeks_remaining = 4;
+            a.disruption_severity = Math.max(a.disruption_severity, 0.7);
+          }
+        }
+        for (const a of this.tier2_suppliers) {
+          if (a.disrupted && a.disruption_weeks_remaining < 3) {
+            a.disruption_weeks_remaining = 3;
+            a.disruption_severity = Math.max(a.disruption_severity, 0.5);
+          }
+        }
+      }
+      // Week 5: deepening shortage
+      if (weeks_in === 5) {
+        destroyMfgInventory(0.2);
+        destroyDistInventory(0.15);
+      }
+      // Week 9: Second wave — renewed strict lockdown
+      if (weeks_in === 9 && dur > 10) {
+        disruptAgents(primary_agents, sev * 0.9, 0.9, 5, 0.5);
+        disruptAgents(this.tier2_suppliers, sev * 0.8, 0.8, 4, 0.35);
+        disruptAgents(this.tier1_suppliers, sev * 0.5, 0.6, 3, 0.2);
+        destroyDistInventory(0.2);
+      }
+
+    } else if (type === 'natural_disaster') {
+      // US HURRICANE: Massive physical destruction — deep sharp V-dip, fast recovery
+      // Everything is physically damaged but rebuilds quickly (insurance, FEMA, emergency supply)
+      if (weeks_in === 0) {
+        // Catastrophic physical damage across the ENTIRE supply chain in affected region
+        disruptAgents(primary_agents, sev * 1.5, 0.95, Math.min(dur, 4), 0.9);
+        // Manufacturing facilities take severe physical damage
+        destroyMfgInventory(0.7);
+        // Distribution centers flooded — major stock loss
+        destroyDistInventory(0.65);
+        // Even upstream tiers lose some product in transit
+        for (const a of this.tier2_suppliers) {
+          a.inventory = Math.round(a.inventory * 0.8);
+        }
+      }
+      // FAST recovery — emergency supplies, FEMA aid, insurance rebuilds
+      if (weeks_in >= 1) {
+        for (const a of primary_agents) {
+          if (a.disrupted) {
+            a.disruption_severity = Math.max(0.02, a.disruption_severity * 0.35);
+            if (a.disruption_severity < 0.05) {
+              a.disrupted = false;
+              a.disruption_weeks_remaining = 0;
+              // Emergency restocking boost
+              a.inventory = Math.min(a.capacity, a.inventory + a.production_rate);
+            }
+          }
+        }
+      }
+      // Week 2: Emergency supply shipments arrive, mfg gets boost
+      if (weeks_in === 2) {
+        for (const m of this.manufacturers) {
+          m.inventory = Math.min(m.capacity, m.inventory + 300);
+        }
+      }
+
+    } else if (type === 'cyber_attack') {
+      // CYBER ATTACK: Brief digital disruption, NO inventory loss, minimal lasting impact
+      if (weeks_in === 0) {
+        // Systems down but product is intact — zero inventory destruction
+        disruptAgents(primary_agents, sev, 0.7, 2, 0);
+      }
+      // Systems come back online very quickly
+      if (weeks_in >= 1) {
+        for (const a of primary_agents) {
+          if (a.disrupted) {
+            a.disruption_severity = Math.max(0, a.disruption_severity * 0.25);
+            if (a.disruption_severity < 0.05) {
+              a.disrupted = false;
+              a.disruption_weeks_remaining = 0;
+            }
+          }
+        }
+      }
+
+    } else if (type === 'quality_failure') {
+      // QUALITY CRISIS: Rolling recall waves destroy finished product at ALL levels
+      const wave_interval = 5;
+      if (weeks_in % wave_interval === 0 && weeks_in <= dur) {
+        const wave_num = Math.floor(weeks_in / wave_interval);
+        const wave_sev = sev * Math.max(0.35, 1 - wave_num * 0.12);
+        const start_idx = (wave_num * 2) % primary_agents.length;
+        const n_hit = Math.ceil(primary_agents.length * wave_sev * 0.8);
+        for (let i = 0; i < n_hit; i++) {
+          const idx = (start_idx + i) % primary_agents.length;
+          primary_agents[idx].disrupted = true;
+          primary_agents[idx].disruption_severity = 0.6 + wave_sev * 0.3;
+          primary_agents[idx].disruption_weeks_remaining = 4;
+          // Each recall destroys 40% of affected supplier inventory
+          primary_agents[idx].inventory = Math.round(primary_agents[idx].inventory * 0.6);
+          this.disrupted_agents.add(primary_agents[idx].name);
+        }
+        // Recalls hit ALL downstream: mfg + dist finished goods pulled from shelves
+        if (wave_num === 0) {
+          destroyMfgInventory(0.45);
+          destroyDistInventory(0.35);
+        } else if (wave_num <= 2) {
+          destroyMfgInventory(0.25);
+          destroyDistInventory(0.20);
+        } else {
+          destroyMfgInventory(0.10);
+          destroyDistInventory(0.08);
+        }
+      }
+
+    } else {
+      // Default: single-shot disruption with 20% inventory loss
+      if (weeks_in === 0) {
+        disruptAgents(primary_agents, sev, 0.5 + sev * 0.5, dur, 0.2);
+      }
     }
   }
 
@@ -675,43 +906,67 @@ class PharmaSupplyChainSimulation {
     for (let week = 0; week < this.config.timeHorizon; week++) {
       this.applyDisruption(week);
 
-      // Tier3 -> Tier2
-      const tier3_output = this.tier3_suppliers.reduce((sum, s) => sum + Math.min(s.inventory, 50), 0);
-      this.tier3_suppliers.forEach((s) => s.update(50));
-      this.tier2_suppliers.forEach((s) => s.update(Math.floor(tier3_output / this.tier2_suppliers.length)));
+      const seasonality = DEMAND_SEASONALITY[week % 12];
 
-      // Tier2 -> Tier1
-      const tier2_output = this.tier2_suppliers.reduce((sum, s) => sum + Math.min(s.inventory, 60), 0);
-      this.tier2_suppliers.forEach((s) => s.update(60));
-      this.tier1_suppliers.forEach((s) => s.update(Math.floor(tier2_output / this.tier1_suppliers.length)));
+      // ---- STEP 1: All suppliers produce ----
+      this.tier3_suppliers.forEach((s) => s.produce());
+      this.tier2_suppliers.forEach((s) => s.produce());
+      this.tier1_suppliers.forEach((s) => s.produce());
 
-      // Tier1 -> Manufacturers
-      const tier1_output = this.tier1_suppliers.reduce((sum, s) => sum + Math.min(s.inventory, 80), 0);
-      this.tier1_suppliers.forEach((s) => s.update(80));
-      const mfg_outputs = this.manufacturers.map((m, idx) => m.update(Math.floor(tier1_output / this.manufacturers.length)));
+      // ---- STEP 2: Supply flows downstream (Tier3 → Tier2 → Tier1 → Mfg → Dist) ----
+      // Calculate demand-driven shipping targets
+      // Total demand ~ nPharmacies * 75 * seasonality ≈ 1500. Each tier must pass through enough.
+      const total_demand_est = this.config.nPharmacies * 75 * seasonality;
+      const shipPerT3 = Math.ceil(total_demand_est / Math.max(1, this.config.nTier3Suppliers) * 1.1);
+      const shipPerT2 = Math.ceil(total_demand_est / Math.max(1, this.config.nTier2Suppliers) * 1.1);
+      const shipPerT1 = Math.ceil(total_demand_est / Math.max(1, this.config.nTier1Suppliers) * 1.1);
 
-      // Manufacturers -> Distributors
+      // Tier3 ships to Tier2
+      let tier3_total_shipped = 0;
+      this.tier3_suppliers.forEach((s) => { tier3_total_shipped += s.ship(shipPerT3); });
+      const perT2_from_T3 = Math.floor(tier3_total_shipped / Math.max(1, this.tier2_suppliers.length));
+      this.tier2_suppliers.forEach((s) => s.receive(perT2_from_T3));
+
+      // Tier2 ships to Tier1
+      let tier2_total_shipped = 0;
+      this.tier2_suppliers.forEach((s) => { tier2_total_shipped += s.ship(shipPerT2); });
+      const perT1_from_T2 = Math.floor(tier2_total_shipped / Math.max(1, this.tier1_suppliers.length));
+      this.tier1_suppliers.forEach((s) => s.receive(perT1_from_T2));
+
+      // Tier1 ships to Manufacturers
+      let tier1_total_shipped = 0;
+      this.tier1_suppliers.forEach((s) => { tier1_total_shipped += s.ship(shipPerT1); });
+      const perMfg_from_T1 = Math.floor(tier1_total_shipped / Math.max(1, this.manufacturers.length));
+      const mfg_outputs = this.manufacturers.map((m) => m.update(perMfg_from_T1));
+
+      // Manufacturers ship to Distributors
       const total_mfg_output = mfg_outputs.reduce((a, b) => a + b, 0);
-      this.distributors.forEach((d, idx) => {
-        d.demand_forecast = d.demand_forecast || 80;
-      });
+      const perDist_from_Mfg = Math.floor(total_mfg_output / Math.max(1, this.distributors.length));
 
-      // Pharmacies demand
+      // ---- STEP 3: Pharmacy demand ----
       const total_demand = this.pharmacies.reduce((sum, p) => {
-        const seasonality = DEMAND_SEASONALITY[week % 12];
         return sum + p.step(week, seasonality);
       }, 0);
+      const demand_per_dist = Math.floor(total_demand / Math.max(1, this.distributors.length));
+      this.distributors.forEach((d) => {
+        d.demand_forecast = demand_per_dist;
+      });
 
-      // Distributors serve demand
-      const dist_outputs = this.distributors.map((d, idx) => d.update(Math.floor(total_mfg_output / this.distributors.length), Math.floor(total_demand / this.distributors.length)));
+      // ---- STEP 4: Distributors receive from mfg and serve demand ----
+      const dist_outputs = this.distributors.map((d) => d.update(perDist_from_Mfg, demand_per_dist));
 
-      // Pharmacies fulfill
-      this.pharmacies.forEach((p, idx) => {
-        const seasonality = DEMAND_SEASONALITY[week % 12];
+      // ---- STEP 5: Pharmacies get fulfilled ----
+      const total_dist_output = dist_outputs.reduce((a, b) => a + b, 0);
+      this.pharmacies.forEach((p) => {
         const demand = Math.round(p.demand * seasonality);
-        const supply = Math.floor(dist_outputs[idx % dist_outputs.length] / this.pharmacies.length);
+        const supply = Math.round(total_dist_output / Math.max(1, this.config.nPharmacies));
         p.fulfill(supply, demand);
       });
+
+      // ---- STEP 6: End-of-week supplier updates (disruption ticking, random events) ----
+      this.tier3_suppliers.forEach((s) => s.update(0));
+      this.tier2_suppliers.forEach((s) => s.update(0));
+      this.tier1_suppliers.forEach((s) => s.update(0));
 
       // Regulator audit
       this.regulator.audit(week, this.manufacturers);
@@ -784,32 +1039,32 @@ export function getScenarioPresets(): Record<string, Partial<PharmaConfig>> {
     'India API Export Ban': {
       disruptionType: 'trade_dispute',
       disruptionTier: 'tier2',
-      disruptionSeverity: 0.5,
-      disruptionDuration: 12,
+      disruptionSeverity: 0.8,
+      disruptionDuration: 20,
     },
     'China Raw Material Lockdown': {
       disruptionType: 'pandemic_wave',
       disruptionTier: 'tier3',
-      disruptionSeverity: 0.4,
-      disruptionDuration: 8,
+      disruptionSeverity: 0.7,
+      disruptionDuration: 14,
     },
     'US Hurricane': {
       disruptionType: 'natural_disaster',
       disruptionTier: 'tier1',
-      disruptionSeverity: 0.3,
-      disruptionDuration: 6,
+      disruptionSeverity: 0.5,
+      disruptionDuration: 8,
     },
     'Cyber Attack': {
       disruptionType: 'cyber_attack',
       disruptionTier: 'tier1',
-      disruptionSeverity: 0.2,
+      disruptionSeverity: 0.3,
       disruptionDuration: 4,
     },
     'Quality Crisis': {
       disruptionType: 'quality_failure',
       disruptionTier: 'tier2',
-      disruptionSeverity: 0.2,
-      disruptionDuration: 16,
+      disruptionSeverity: 0.4,
+      disruptionDuration: 24,
     },
   };
 }
