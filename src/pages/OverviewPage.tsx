@@ -1,15 +1,13 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { KpiCard } from "@/components/KpiCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { WeekRangeSlider, useWeekRange } from "@/components/WeekRangeSlider";
 import {
-  timeseriesData,
-  aiComparisonData,
-  TOTAL_WEEKS,
-  last,
-  avg,
-  pctChange,
-} from "@/data";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Activity, AlertTriangle, Users, Thermometer, Brain, ShieldCheck,
   ArrowRight,
@@ -19,105 +17,213 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, Legend,
 } from "recharts";
 
-const tiers = [
-  { name: "Tier 3", agents: 8, disrupted: 1, color: "bg-blue-900" },
-  { name: "Tier 2", agents: 12, disrupted: 3, color: "bg-blue-700" },
-  { name: "Tier 1", agents: 6, disrupted: 1, color: "bg-blue-500" },
-  { name: "Manufacturer", agents: 4, disrupted: 1, color: "bg-emerald-600" },
-  { name: "Distributor", agents: 5, disrupted: 0, color: "bg-amber-600" },
-  { name: "Pharmacy", agents: 20, disrupted: 0, color: "bg-amber-500" },
+import validationData from "@/data/validationReportData.json";
+
+// ─── Types ──────────────────────────────────────────────────────
+interface WeeklyPercentile {
+  week: number;
+  sl_p10: number;
+  sl_p25: number;
+  sl_p50: number;
+  sl_p75: number;
+  sl_p90: number;
+  inv_p10: number;
+  inv_p50: number;
+  inv_p90: number;
+}
+
+interface ScenarioSummary {
+  avgMinSL: number;
+  avgAvgSL: number;
+  avgTerminalSL: number;
+  avgStockouts: number;
+  avgRecovery: number;
+  avgSpoilage: number;
+  avgCompliance: number;
+  avgPatientImpact: number;
+  stdMinSL: number;
+  p10MinSL: number;
+  p90MinSL: number;
+}
+
+interface ScenarioConfig {
+  summary: ScenarioSummary;
+  weeklyPercentiles: WeeklyPercentile[];
+}
+
+const data = validationData as {
+  metadata: { scenarios: string[]; configs: string[]; disruptionStart: number; totalRuns: number; nSeeds: number };
+  scenarios: Record<string, Record<string, ScenarioConfig>>;
+  scorecard: Array<{ name: string; pass: boolean; detail: string }>;
+};
+
+const scenarios = data.metadata.scenarios;
+
+// Supply chain tiers derived from the ABM config defaults
+const baseTiers = [
+  { name: "Tier 3", agents: 3, color: "bg-purple-700" },
+  { name: "Tier 2", agents: 4, color: "bg-amber-700" },
+  { name: "Tier 1", agents: 5, color: "bg-blue-600" },
+  { name: "Manufacturing", agents: 3, color: "bg-emerald-600" },
+  { name: "Distribution", agents: 4, color: "bg-cyan-600" },
+  { name: "Pharmacy", agents: 20, color: "bg-rose-600" },
 ];
 
+// Disruption impact per scenario on each tier
+const scenarioDisruptions: Record<string, number[]> = {
+  "India API Export Ban":        [0, 3, 2, 1, 1, 0],
+  "China Raw Material Lockdown": [2, 2, 1, 1, 1, 0],
+  "US Hurricane":                [0, 0, 3, 2, 2, 0],
+  "Cyber Attack":                [0, 0, 2, 1, 0, 0],
+  "Quality Crisis":              [0, 2, 1, 1, 1, 0],
+};
+
 export default function OverviewPage() {
-  const { range, setRange, sliceArr } = useWeekRange(TOTAL_WEEKS);
+  const [selectedScenario, setSelectedScenario] = useState(scenarios[0]);
 
-  const slicedServiceLevel = sliceArr(timeseriesData.Service_Level);
-  const slicedActiveDisruptions = sliceArr(timeseriesData.Active_Disruptions);
-  const slicedPatientsServed = sliceArr(timeseriesData.Patients_Served);
-  const slicedSpoiledUnits = sliceArr(timeseriesData.Spoiled_Units);
-  const slicedShortagePredictions = sliceArr(timeseriesData.Shortage_Predictions);
-  const slicedComplianceViolations = sliceArr(timeseriesData.Compliance_Violations);
-  const slicedTotalInventory = sliceArr(timeseriesData.Total_Inventory);
+  const ai = data.scenarios[selectedScenario]?.["AI-Enabled"];
+  const noai = data.scenarios[selectedScenario]?.["No-AI"];
 
-  const slChart = slicedServiceLevel.map((v, i) => ({
-    week: range[0] + i + 1,
-    value: v * 100,
-  }));
+  // Build chart data from weekly percentiles
+  const slChart = useMemo(() => {
+    if (!ai?.weeklyPercentiles) return [];
+    return ai.weeklyPercentiles.map((w) => ({
+      week: w.week + 1,
+      value: +(w.sl_p50 * 100).toFixed(1),
+    }));
+  }, [ai]);
 
-  const aiChart = slicedServiceLevel.map((_, i) => ({
-    week: range[0] + i + 1,
-    ai: aiComparisonData.ai_enabled.Service_Level[range[0] + i] * 100,
-    noAi: aiComparisonData.no_ai.Service_Level[range[0] + i] * 100,
-  }));
+  const aiChart = useMemo(() => {
+    if (!ai?.weeklyPercentiles || !noai?.weeklyPercentiles) return [];
+    return ai.weeklyPercentiles.map((w, i) => ({
+      week: w.week + 1,
+      ai: +(w.sl_p50 * 100).toFixed(1),
+      noAi: +(noai.weeklyPercentiles[i]?.sl_p50 * 100 || 0).toFixed(1),
+    }));
+  }, [ai, noai]);
 
-  const inventoryChart = slicedTotalInventory.map((v, i) => ({
-    week: range[0] + i + 1,
-    value: v,
-  }));
+  const inventoryChart = useMemo(() => {
+    if (!ai?.weeklyPercentiles) return [];
+    return ai.weeklyPercentiles.map((w) => ({
+      week: w.week + 1,
+      value: w.inv_p50,
+    }));
+  }, [ai]);
+
+  // Sparkline data: last 12 weeks of AI median SL
+  const slSparkline = useMemo(() => {
+    if (!ai?.weeklyPercentiles) return [];
+    return ai.weeklyPercentiles.slice(-12).map((w) => w.sl_p50);
+  }, [ai]);
+
+  const invSparkline = useMemo(() => {
+    if (!ai?.weeklyPercentiles) return [];
+    return ai.weeklyPercentiles.slice(-12).map((w) => w.inv_p50);
+  }, [ai]);
+
+  // KPI values
+  const summary = ai?.summary;
+  const noaiSummary = noai?.summary;
+
+  // Compute week-over-week pct change for sparkline trend
+  const computeTrend = (arr: number[]) => {
+    if (arr.length < 8) return 0;
+    const recent = arr.slice(-4);
+    const prev = arr.slice(-8, -4);
+    const rAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+    const pAvg = prev.reduce((a, b) => a + b, 0) / prev.length;
+    return pAvg === 0 ? 0 : ((rAvg - pAvg) / pAvg) * 100;
+  };
+
+  const slTrend = computeTrend(ai?.weeklyPercentiles?.map((w) => w.sl_p50) || []);
+
+  // Tier disruption for selected scenario
+  const disruptions = scenarioDisruptions[selectedScenario] || [0, 0, 0, 0, 0, 0];
+  const tiers = baseTiers.map((t, i) => ({ ...t, disrupted: disruptions[i] }));
+
+  if (!summary || !noaiSummary) {
+    return <div className="p-8 text-muted-foreground">Loading validation data...</div>;
+  }
 
   return (
     <div className="space-y-6">
+      {/* Scenario Selector */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Time Period</CardTitle></CardHeader>
-        <CardContent className="pt-4">
-          <WeekRangeSlider totalWeeks={TOTAL_WEEKS} value={range} onChange={setRange} />
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Scenario Overview</CardTitle>
+            <Select value={selectedScenario} onValueChange={setSelectedScenario}>
+              <SelectTrigger className="w-72">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {scenarios.map((sc) => (
+                  <SelectItem key={sc} value={sc}>
+                    {sc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <p className="text-xs text-muted-foreground">
+            Data from {data.metadata.nSeeds}-seed Monte Carlo simulation • Median (P50) values shown • Disruption starts week {data.metadata.disruptionStart}
+          </p>
         </CardContent>
       </Card>
 
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Service Level"
-          value={`${(avg(slicedServiceLevel) * 100).toFixed(1)}%`}
+          value={`${(summary.avgAvgSL * 100).toFixed(1)}%`}
           icon={<Activity className="h-4 w-4" />}
-          trend={{ value: pctChange(slicedServiceLevel), direction: pctChange(slicedServiceLevel) >= 0 ? "up" : "down" }}
+          trend={{ value: Math.abs(slTrend), direction: slTrend >= 0 ? "up" : "down" }}
           goodDirection="up"
-          sparklineData={slicedServiceLevel.slice(-12)}
+          sparklineData={slSparkline}
         />
         <KpiCard
-          title="Active Disruptions"
-          value={String(last(slicedActiveDisruptions))}
+          title="Min Service Level"
+          value={`${(summary.avgMinSL * 100).toFixed(1)}%`}
           icon={<AlertTriangle className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(slicedActiveDisruptions)), direction: pctChange(slicedActiveDisruptions) <= 0 ? "down" : "up" }}
-          goodDirection="down"
-          sparklineData={slicedActiveDisruptions.slice(-12)}
-        />
-        <KpiCard
-          title="Patients Served"
-          value={last(slicedPatientsServed).toLocaleString()}
-          icon={<Users className="h-4 w-4" />}
-          trend={{ value: pctChange(slicedPatientsServed), direction: "up" }}
+          trend={{ value: Math.abs(((summary.avgMinSL - noaiSummary.avgMinSL) / noaiSummary.avgMinSL) * 100), direction: "up" }}
           goodDirection="up"
-          sparklineData={slicedPatientsServed.slice(-12)}
         />
         <KpiCard
-          title="Cold Chain Spoilage"
-          value={String(last(slicedSpoiledUnits))}
-          icon={<Thermometer className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(slicedSpoiledUnits)), direction: pctChange(slicedSpoiledUnits) >= 0 ? "up" : "down" }}
+          title="Avg Stockouts"
+          value={summary.avgStockouts.toFixed(0)}
+          icon={<Users className="h-4 w-4" />}
+          trend={{ value: Math.abs(((noaiSummary.avgStockouts - summary.avgStockouts) / noaiSummary.avgStockouts) * 100), direction: "down" }}
           goodDirection="down"
-          sparklineData={slicedSpoiledUnits.slice(-12)}
         />
         <KpiCard
-          title="Shortage Predictions"
-          value={String(last(slicedShortagePredictions))}
+          title="Avg Spoilage"
+          value={summary.avgSpoilage.toFixed(0)}
+          icon={<Thermometer className="h-4 w-4" />}
+          trend={{ value: Math.abs(((noaiSummary.avgSpoilage - summary.avgSpoilage) / noaiSummary.avgSpoilage) * 100), direction: summary.avgSpoilage < noaiSummary.avgSpoilage ? "down" : "up" }}
+          goodDirection="down"
+        />
+        <KpiCard
+          title="Terminal SL"
+          value={`${(summary.avgTerminalSL * 100).toFixed(1)}%`}
           icon={<Brain className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(slicedShortagePredictions)), direction: "up" }}
-          goodDirection="neutral"
-          sparklineData={slicedShortagePredictions.slice(-12)}
+          goodDirection="up"
         />
         <KpiCard
           title="Compliance Violations"
-          value={String(last(slicedComplianceViolations))}
+          value={summary.avgCompliance.toFixed(0)}
           icon={<ShieldCheck className="h-4 w-4" />}
-          trend={{ value: Math.abs(pctChange(slicedComplianceViolations)), direction: pctChange(slicedComplianceViolations) >= 0 ? "up" : "down" }}
+          trend={{ value: Math.abs(((noaiSummary.avgCompliance - summary.avgCompliance) / noaiSummary.avgCompliance) * 100), direction: summary.avgCompliance < noaiSummary.avgCompliance ? "down" : "up" }}
           goodDirection="down"
-          sparklineData={slicedComplianceViolations.slice(-12)}
         />
       </div>
 
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Service Level Over Time */}
         <Card>
-          <CardHeader><CardTitle className="text-base">Service Level Over Time</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Service Level Over Time (AI-Enabled Median)</CardTitle></CardHeader>
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -130,9 +236,13 @@ export default function OverviewPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 19%, 25%)" />
                   <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                  <YAxis domain={[0, 100]} stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
-                  <ReferenceLine y={95} stroke="#EF4444" strokeDasharray="5 5" label={{ value: "Target 95%", fill: "#EF4444", fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} stroke="hsl(215, 20%, 65%)" fontSize={12} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }}
+                    formatter={(v: number) => [`${v.toFixed(1)}%`, "Service Level"]}
+                  />
+                  <ReferenceLine y={95} stroke="#10B981" strokeDasharray="5 5" label={{ value: "Target 95%", fill: "#10B981", fontSize: 11 }} />
+                  <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" label={{ value: "Disruption", fill: "#EF4444", fontSize: 10, position: "top" }} />
                   <Area type="monotone" dataKey="value" stroke="#3B82F6" fill="url(#slGrad)" strokeWidth={2} name="Service Level %" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -140,6 +250,7 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
 
+        {/* AI vs No-AI */}
         <Card>
           <CardHeader><CardTitle className="text-base">AI-Enabled vs No-AI</CardTitle></CardHeader>
           <CardContent>
@@ -148,11 +259,15 @@ export default function OverviewPage() {
                 <LineChart data={aiChart}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 19%, 25%)" />
                   <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                  <YAxis domain={[40, 100]} stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
+                  <YAxis domain={[0, 105]} stroke="hsl(215, 20%, 65%)" fontSize={12} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }}
+                    formatter={(v: number) => [`${v.toFixed(1)}%`]}
+                  />
                   <Legend />
+                  <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
                   <Line type="monotone" dataKey="ai" stroke="#10B981" strokeWidth={2} dot={false} name="AI-Enabled" />
-                  <Line type="monotone" dataKey="noAi" stroke="#EF4444" strokeWidth={2} dot={false} name="No AI" strokeDasharray="5 5" />
+                  <Line type="monotone" dataKey="noAi" stroke="#F59E0B" strokeWidth={2} dot={false} name="No AI" strokeDasharray="5 5" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -160,8 +275,9 @@ export default function OverviewPage() {
         </Card>
       </div>
 
+      {/* Inventory Trend */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Inventory Trend</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Inventory Trend (AI-Enabled Median)</CardTitle></CardHeader>
         <CardContent>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -174,8 +290,12 @@ export default function OverviewPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 19%, 25%)" />
                 <XAxis dataKey="week" stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                <YAxis stroke="hsl(215, 20%, 65%)" fontSize={12} />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} formatter={(v) => [(v as number).toLocaleString(), "Units"]} />
+                <YAxis stroke="hsl(215, 20%, 65%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }}
+                  formatter={(v: number) => [v.toLocaleString(), "Units"]}
+                />
+                <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
                 <Area type="monotone" dataKey="value" stroke="#10B981" fill="url(#invGrad)" strokeWidth={2} name="Total Inventory" />
               </AreaChart>
             </ResponsiveContainer>
@@ -183,6 +303,7 @@ export default function OverviewPage() {
         </CardContent>
       </Card>
 
+      {/* Supply Chain at a Glance */}
       <Card>
         <CardHeader><CardTitle className="text-base">Supply Chain at a Glance</CardTitle></CardHeader>
         <CardContent>
