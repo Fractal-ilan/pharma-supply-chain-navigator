@@ -128,7 +128,7 @@ export default function ShortagePage() {
                 <Tooltip contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }} />
                 <Legend />
                 <ReferenceLine yAxisId="left" y={95} stroke="#10B981" strokeDasharray="5 5" />
-                <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="left" x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
                 <Line yAxisId="left" type="monotone" dataKey="serviceLevel" stroke="#3B82F6" strokeWidth={2} dot={false} name="Service Level %" />
                 <Area yAxisId="right" type="monotone" dataKey="inventory" stroke="#10B981" fill="#10B981" fillOpacity={0.15} name="Inventory" />
               </ComposedChart>
