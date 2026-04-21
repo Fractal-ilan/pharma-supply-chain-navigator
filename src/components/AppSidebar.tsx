@@ -20,6 +20,8 @@ import {
   Thermometer,
   ShieldCheck,
   ClipboardCheck,
+  GitBranch,
+  FileText,
 } from "lucide-react";
 
 const items = [
@@ -31,6 +33,8 @@ const items = [
   { title: "Inventory Balancing", url: "/inventory", icon: RefreshCcw },
   { title: "Cold Chain", url: "/cold-chain", icon: Thermometer },
   { title: "Compliance", url: "/compliance", icon: ShieldCheck },
+  { title: "Supply Chain Flow", url: "/supply-chain-flow", icon: GitBranch },
+  { title: "Blog Post", url: "/blog", icon: FileText },
   { title: "Validation Report", url: "/validation", icon: ClipboardCheck },
 ];
 

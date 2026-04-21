@@ -39,6 +39,7 @@ export interface PharmaConfig {
   enableAutonomousInventory: boolean;
   enableColdChainAI: boolean;
   randomSeed?: number;
+  leadTimeMultipliers?: { tier1: number; tier2: number; tier3: number };
 }
 
 export interface WeeklySnapshot {
@@ -190,6 +191,8 @@ class SupplierAgent {
   defect_rate: number;
   inventory: number = 150;
   lead_time: number;
+  base_lead_time: number;
+  lead_time_multiplier: number = 1.0; // Scenario-specific multiplier applied during disruptions
   disrupted: boolean = false;
   disruption_weeks_remaining: number = 0;
   risk_score: number;
@@ -202,7 +205,8 @@ class SupplierAgent {
     this.rng = rng;
     this.production_rate = 300 + rng.nextInt(60);
     this.defect_rate = 0.01 + rng.nextFloat() * 0.02;
-    this.lead_time = tier === 'tier3' ? 4 : tier === 'tier2' ? 3 : 2;
+    this.base_lead_time = tier === 'tier3' ? 4 : tier === 'tier2' ? 3 : 2;
+    this.lead_time = this.base_lead_time;
     this.risk_score = REGIONAL_RISK_SCORES[region] || 0.35;
   }
 
@@ -226,16 +230,24 @@ class SupplierAgent {
 
   // Ship goods downstream: returns amount shipped, reduces inventory
   // Disrupted suppliers have impaired logistics (frozen exports, locked warehouses, etc.)
+  // Lead time multiplier further reduces throughput (longer pipeline = less arrives per week)
   ship(requested: number): number {
+    // Lead time multiplier reduces effective throughput even for non-disrupted suppliers
+    // in the affected tier (simulates pipeline congestion, rerouting delays, requalification)
+    const lt_throughput = this.lead_time_multiplier > 1.0
+      ? Math.max(0.15, 1.0 / this.lead_time_multiplier)
+      : 1.0;
+
     if (this.disrupted && this.disruption_severity > 0.2) {
       // Logistics impairment: higher severity = less can be shipped
       const ship_fraction = Math.max(0.05, 1 - this.disruption_severity * 0.85);
-      const max_ship = Math.round(this.inventory * ship_fraction);
+      const max_ship = Math.round(this.inventory * ship_fraction * lt_throughput);
       const shipped = Math.min(max_ship, requested);
       this.inventory -= shipped;
       return shipped;
     }
-    const shipped = Math.min(this.inventory, requested);
+    const effective_request = Math.round(requested * lt_throughput);
+    const shipped = Math.min(this.inventory, effective_request);
     this.inventory -= shipped;
     return shipped;
   }
@@ -567,8 +579,25 @@ class PharmaSupplyChainSimulation {
     const dur = this.config.disruptionDuration;
     const sev = this.config.disruptionSeverity;
     const type = this.config.disruptionType;
+    const ltm = this.config.leadTimeMultipliers || { tier1: 1.0, tier2: 1.0, tier3: 1.0 };
 
-    // Only active during the disruption window
+    // Apply lead time multipliers during disruption, then gradually decay back to 1.0
+    if (week >= start && week <= start + dur) {
+      // During active disruption: apply full multipliers
+      this.tier1_suppliers.forEach(s => { s.lead_time_multiplier = ltm.tier1; });
+      this.tier2_suppliers.forEach(s => { s.lead_time_multiplier = ltm.tier2; });
+      this.tier3_suppliers.forEach(s => { s.lead_time_multiplier = ltm.tier3; });
+    } else if (week > start + dur) {
+      // Post-disruption: decay multipliers back to 1.0 over lead_time * multiplier weeks
+      // Slower decay for higher multipliers (reflects longer requalification/rerouting)
+      const weeks_post = week - (start + dur);
+      const decay = (m: number) => Math.max(1.0, m - (m - 1.0) * weeks_post / (m * 12));
+      this.tier1_suppliers.forEach(s => { s.lead_time_multiplier = decay(ltm.tier1); });
+      this.tier2_suppliers.forEach(s => { s.lead_time_multiplier = decay(ltm.tier2); });
+      this.tier3_suppliers.forEach(s => { s.lead_time_multiplier = decay(ltm.tier3); });
+    }
+
+    // Only apply disruption events during the disruption window
     if (week < start || week > start + dur) return;
 
     const weeks_in = week - start;
@@ -1031,6 +1060,7 @@ export function getDefaultConfig(): PharmaConfig {
     enablePredictiveMaintenance: false,
     enableAutonomousInventory: false,
     enableColdChainAI: false,
+    leadTimeMultipliers: { tier1: 1.0, tier2: 1.0, tier3: 1.0 },
   };
 }
 
@@ -1041,30 +1071,40 @@ export function getScenarioPresets(): Record<string, Partial<PharmaConfig>> {
       disruptionTier: 'tier2',
       disruptionSeverity: 0.8,
       disruptionDuration: 20,
+      disruptionStartWeek: 4,  // ends wk 24, recovery through ~wk 48+
+      leadTimeMultipliers: { tier1: 1.3, tier2: 2.5, tier3: 2.0 },
     },
     'China Raw Material Lockdown': {
       disruptionType: 'pandemic_wave',
       disruptionTier: 'tier3',
       disruptionSeverity: 0.7,
       disruptionDuration: 14,
+      disruptionStartWeek: 14, // ends wk 28, late deep shock
+      leadTimeMultipliers: { tier1: 1.5, tier2: 1.8, tier3: 3.0 },
     },
     'US Hurricane': {
       disruptionType: 'natural_disaster',
       disruptionTier: 'tier1',
       disruptionSeverity: 0.5,
       disruptionDuration: 8,
+      disruptionStartWeek: 8,  // ends wk 16, mid-timeline local shock
+      leadTimeMultipliers: { tier1: 1.3, tier2: 1.0, tier3: 1.0 },
     },
     'Cyber Attack': {
       disruptionType: 'cyber_attack',
       disruptionTier: 'tier1',
       disruptionSeverity: 0.3,
       disruptionDuration: 4,
+      disruptionStartWeek: 2,  // ends wk 6, earliest and shortest
+      leadTimeMultipliers: { tier1: 1.1, tier2: 1.0, tier3: 1.0 },
     },
     'Quality Crisis': {
       disruptionType: 'quality_failure',
       disruptionTier: 'tier2',
       disruptionSeverity: 0.4,
       disruptionDuration: 24,
+      disruptionStartWeek: 20, // ends wk 44, long slow burn, latest start
+      leadTimeMultipliers: { tier1: 1.5, tier2: 2.0, tier3: 1.2 },
     },
   };
 }

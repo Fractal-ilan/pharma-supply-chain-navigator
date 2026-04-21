@@ -13,6 +13,8 @@ import InventoryPage from "@/pages/InventoryPage";
 import ColdChainPage from "@/pages/ColdChainPage";
 import CompliancePage from "@/pages/CompliancePage";
 import ValidationReportPage from "@/pages/ValidationReportPage";
+import SupplyChainFlowPage from "@/pages/SupplyChainFlowPage";
+import BlogPage from "@/pages/BlogPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +35,8 @@ const App = () => (
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/cold-chain" element={<ColdChainPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
+            <Route path="/supply-chain-flow" element={<SupplyChainFlowPage />} />
+            <Route path="/blog" element={<BlogPage />} />
             <Route path="/validation" element={<ValidationReportPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
