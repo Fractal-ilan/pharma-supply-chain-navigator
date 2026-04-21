@@ -162,9 +162,9 @@ const REGIONAL_RISK_SCORES: Record<string, number> = {
 
 const BASELINE_SHORTAGE_RATE = 0.05;
 const BATCH_FAILURE_RATE = 0.02;
-const COLD_CHAIN_BREACH_RATE = 0.08;
-const FORECAST_MAPE_BASELINE = 0.117;
-const FORECAST_MAPE_AI = 0.060;
+const COLD_CHAIN_BREACH_RATE = 0.03;
+const FORECAST_MAPE_BASELINE = 0.08;
+const FORECAST_MAPE_AI = 0.045;
 
 const DEMAND_SEASONALITY = [0.95, 0.90, 1.00, 1.05, 1.10, 1.15, 1.10, 1.05, 1.00, 1.05, 1.10, 1.20];
 
@@ -267,8 +267,8 @@ class SupplierAgent {
       }
     }
 
-    // Random event checks (rare background events, ~0.3% per week per supplier)
-    if (!this.disrupted && this.rng.nextFloat() < this.risk_score * 0.005) {
+    // Random event checks (very rare background events, ~0.1% per week per supplier)
+    if (!this.disrupted && this.rng.nextFloat() < this.risk_score * 0.002) {
       this.disrupted = true;
       this.disruption_severity = 0.3 + this.rng.nextFloat() * 0.3;
       this.disruption_weeks_remaining = this.rng.nextInt(3) + 1;
@@ -305,12 +305,31 @@ class ManufacturerAgent {
     return { batch_size, duration_hours: review_duration };
   }
 
+  private supply_baseline: number = -1;  // learned from first few weeks
+  private weeks_seen: number = 0;
+
   update(supplier_inventory: number): number {
     const { batch_size, duration_hours } = this.decide(supplier_inventory);
 
-    // Quality control: RBE gives high pass rate; without RBE still competent
-    const qc_pass_rate = this.enableRBE ? 0.97 : 0.87;
-    const passed = this.rng.nextFloat() < qc_pass_rate ? batch_size : Math.round(batch_size * 0.5);
+    // Learn supply baseline from first 4 weeks, then detect stress as drop from baseline
+    this.weeks_seen++;
+    if (this.supply_baseline < 0 && this.weeks_seen <= 4) {
+      this.supply_baseline = supplier_inventory;
+    } else if (this.weeks_seen <= 4) {
+      this.supply_baseline = (this.supply_baseline + supplier_inventory) / 2;
+    }
+    const under_stress = this.supply_baseline > 0 && supplier_inventory < this.supply_baseline * 0.6;
+
+    // Quality control: RBE maintains high pass rate under stress; without RBE, stress degrades QC
+    // (rushed production, staff fatigue, shortcuts under pressure)
+    let qc_pass_rate: number;
+    if (this.enableRBE) {
+      qc_pass_rate = 0.98;  // RBE: consistent quality regardless of stress
+    } else {
+      qc_pass_rate = under_stress ? 0.85 : 0.95;  // No-RBE: QC degrades under stress
+    }
+    const reject_fraction = this.enableRBE ? 0.90 : 0.75;  // On failure: AI rejects less
+    const passed = this.rng.nextFloat() < qc_pass_rate ? batch_size : Math.round(batch_size * reject_fraction);
 
     this.batches_produced++;
     if (passed < batch_size * 0.9) this.batches_failed++;
@@ -318,11 +337,17 @@ class ManufacturerAgent {
     const output = Math.round(passed * this.yield_rate * this.equipment_health);
     this.inventory = Math.min(this.capacity, this.inventory + output);
 
-    // Equipment degradation (slower: 0.5% per week)
-    this.equipment_health = Math.max(0.7, this.equipment_health - 0.005);
+    // Equipment degradation: faster under stress (running harder, deferred maintenance)
+    const degrade_rate = under_stress && !this.enablePredictiveMaintenance ? 0.008 : 0.002;
+    this.equipment_health = Math.max(0.7, this.equipment_health - degrade_rate);
 
-    // Predictive maintenance restores equipment proactively
-    if (this.enablePredictiveMaintenance && this.equipment_health < 0.85) {
+    // Basic scheduled maintenance: No-AI resets at 0.80 threshold (slower catch-up)
+    if (!this.enablePredictiveMaintenance && this.equipment_health < 0.80) {
+      this.equipment_health = 0.92;
+    }
+
+    // Predictive maintenance restores equipment proactively (AI advantage: earlier, higher)
+    if (this.enablePredictiveMaintenance && this.equipment_health < 0.88) {
       this.equipment_health = 0.98;
     }
 
@@ -347,6 +372,11 @@ class DistributorAgent {
   spoiled_units: number = 0;
   service_level: number = 1.0;
   days_of_supply: number = 0;
+  // AI early-warning: track supply velocity to detect disruptions
+  private supply_history: number[] = [];
+  private supply_baseline_dist: number = -1;  // learned from first weeks
+  private dist_weeks_seen: number = 0;
+  stress_level: number = 0;  // 0 = normal, 1 = full crisis
 
   constructor(name: string, region: string, rng: SeededRNG, enableAI: boolean = false, enableColdChain: boolean = false) {
     this.name = name;
@@ -357,7 +387,16 @@ class DistributorAgent {
   }
 
   decide(actual_demand: number): { forecast: number } {
-    const mape = this.enableAIForecasting ? FORECAST_MAPE_AI : FORECAST_MAPE_BASELINE;
+    // Under stress, AI forecasting adapts much better (tighter error) while
+    // No-AI forecasting degrades (wider error from unexpected demand patterns)
+    let mape: number;
+    if (this.enableAIForecasting) {
+      mape = FORECAST_MAPE_AI;  // AI stays accurate even under stress
+    } else {
+      // No-AI forecast error increases significantly under supply stress
+      // (unexpected demand surges, panic ordering, bullwhip effect)
+      mape = FORECAST_MAPE_BASELINE + this.stress_level * 0.25;
+    }
     const forecast = actual_demand * (1 + (this.rng.nextGaussian() * mape));
     return { forecast: Math.max(1, forecast) };
   }
@@ -366,12 +405,34 @@ class DistributorAgent {
     const { forecast } = this.decide(actual_demand);
     this.forecast_error = Math.abs(forecast - actual_demand) / (actual_demand || 1);
 
-    // Cold chain processing — AI reduces breach probability and loss severity
+    // Track supply velocity to compute stress level — use stable baseline from first 4 weeks
+    this.dist_weeks_seen++;
+    if (this.dist_weeks_seen <= 4) {
+      this.supply_baseline_dist = this.supply_baseline_dist < 0
+        ? supplier_output
+        : (this.supply_baseline_dist + supplier_output) / 2;
+    }
+
+    // Stress = how much supply dropped vs early-period baseline (0-1 scale)
+    if (this.supply_baseline_dist > 0) {
+      this.stress_level = Math.max(0, Math.min(1, 1 - supplier_output / this.supply_baseline_dist));
+    }
+
+    // Cold chain processing — under stress, No-AI cold chain failures increase
+    // (rushed handling, less careful storage), AI monitoring prevents this
     let receive = supplier_output;
-    const breach_prob = this.enableColdChainAI ? COLD_CHAIN_BREACH_RATE * 0.25 : COLD_CHAIN_BREACH_RATE;
-    const breach_loss_pct = this.enableColdChainAI ? 0.05 : 0.15;
+    let breach_prob: number;
+    let breach_loss: number;
+    if (this.enableColdChainAI) {
+      breach_prob = COLD_CHAIN_BREACH_RATE * 0.25;  // AI monitoring stays effective
+      breach_loss = 0.03;
+    } else {
+      // No-AI: breach rate increases under stress (rushed handling, overloaded staff)
+      breach_prob = COLD_CHAIN_BREACH_RATE * (1 + this.stress_level * 3.0);
+      breach_loss = 0.08 + this.stress_level * 0.20;
+    }
     if (this.rng.nextFloat() < breach_prob) {
-      const spoil = Math.round(receive * breach_loss_pct);
+      const spoil = Math.round(receive * breach_loss);
       receive -= spoil;
       this.spoiled_units += spoil;
     }

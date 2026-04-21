@@ -4,8 +4,8 @@ import { FileDown, BookOpen, BarChart3, Users, FlaskConical } from "lucide-react
 const BLOG_PDF_PATH = "/AI_Inventory_Optimization_Blog.pdf";
 
 const KPIS = [
-  { label: "Avg SL Improvement", value: "+12.7pp", icon: BarChart3, color: "text-green-600" },
-  { label: "Patient-Days Saved", value: "877K", icon: Users, color: "text-blue-600" },
+  { label: "Avg SL Improvement", value: "+4.6pp", icon: BarChart3, color: "text-green-600" },
+  { label: "Patient-Days Saved", value: "159K", icon: Users, color: "text-blue-600" },
   { label: "Monte Carlo Runs", value: "300", icon: FlaskConical, color: "text-purple-600" },
   { label: "Scenarios Tested", value: "5", icon: BookOpen, color: "text-amber-600" },
 ];
@@ -42,7 +42,7 @@ export default function BlogPage() {
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-gray-900">Download the Full Blog Post</h2>
             <p className="text-sm text-gray-600 mt-1">
-              300 Monte Carlo simulations reveal a +12.7pp service level advantage and 877,000 fewer
+              300 Monte Carlo simulations reveal a +4.6pp service level advantage and 159,000 fewer
               patient-days of drug unavailability. Includes 6 charts, scenario comparison tables, and
               the supply chain infographic.
             </p>
@@ -93,8 +93,8 @@ export default function BlogPage() {
             <p className="text-gray-600">
               We tested across five realistic disruption scenarios, each run 30 times with different random
               seeds across both AI and No-AI configurations — 300 Monte Carlo simulations total. The results
-              are unambiguous: AI-enabled inventory management outperforms the static baseline in every single
-              scenario, with an average improvement of 12.7 percentage points in worst-case service levels.
+              are clear: AI-enabled inventory management outperforms the static baseline in every single
+              scenario, with an average improvement of 4.6 percentage points in worst-case service levels.
             </p>
 
             {/* Scenario table */}
@@ -110,11 +110,11 @@ export default function BlogPage() {
                 </thead>
                 <tbody>
                   {[
-                    { name: "India API Ban", ai: "48.4%", noai: "40.8%", imp: "+7.6pp" },
-                    { name: "China Lockdown", ai: "45.4%", noai: "37.3%", imp: "+8.1pp" },
-                    { name: "US Hurricane", ai: "50.2%", noai: "36.0%", imp: "+14.3pp" },
-                    { name: "Cyber Attack", ai: "74.2%", noai: "53.4%", imp: "+20.8pp" },
-                    { name: "Quality Crisis", ai: "50.0%", noai: "37.3%", imp: "+12.7pp" },
+                    { name: "India API Ban", ai: "55.7%", noai: "53.0%", imp: "+2.7pp" },
+                    { name: "China Lockdown", ai: "50.8%", noai: "48.6%", imp: "+2.2pp" },
+                    { name: "US Hurricane", ai: "58.1%", noai: "53.1%", imp: "+5.0pp" },
+                    { name: "Cyber Attack", ai: "88.5%", noai: "81.8%", imp: "+6.8pp" },
+                    { name: "Quality Crisis", ai: "59.5%", noai: "53.2%", imp: "+6.3pp" },
                   ].map((row, i) => (
                     <tr key={row.name} className={i % 2 === 0 ? "bg-gray-50" : ""}>
                       <td className="py-2 px-3 font-medium">{row.name}</td>
