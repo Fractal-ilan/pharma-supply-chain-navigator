@@ -22,3 +22,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Office lock files (Word/Excel/PowerPoint temporary files — both formats)
+~$*.docx
+~$*.xlsx
+~$*.pptx
+.~lock.*#
+
+# Vite / Vitest timestamp artifacts
+vite.config.ts.timestamp-*.mjs
+vitest.config.ts.timestamp-*.mjs
+*.timestamp-*.mjs
+
+# Temp files (LibreOffice scratch, OS temp)
+*.tmp
+lu*.tmp
+
+# Local validation / calibration scratch — project-internal, not for deploy
+validation/
+
+# Local artifact directory (kept out of Lovable deploys)
+.claude/

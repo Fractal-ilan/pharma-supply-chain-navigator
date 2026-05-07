@@ -138,7 +138,8 @@ export function SimulationResults({ result }: SimulationResultsProps) {
       },
       dist: {
         count: snap.distributors.length,
-        lowService: snap.distributors.filter(d => (d.serviceLevel || 0) < 95).length,
+        // distributor.serviceLevel is on a 0-1 scale; "low service" means < 95%
+        lowService: snap.distributors.filter(d => (d.serviceLevel || 0) < 0.95).length,
       },
     };
   }, [result]);
