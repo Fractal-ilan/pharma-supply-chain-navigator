@@ -66,6 +66,21 @@ const data = validationData as unknown as {
 
 const scenarios = data.metadata.scenarios;
 
+function getDisruptionStart(scenario?: string): number {
+  if (scenario && data.metadata.disruptionStarts?.[scenario] != null) {
+    return data.metadata.disruptionStarts[scenario];
+  }
+  if (typeof data.metadata.disruptionStart === "number") {
+    return data.metadata.disruptionStart;
+  }
+  const starts = data.metadata.disruptionStarts;
+  if (starts) {
+    const vals = Object.values(starts);
+    if (vals.length) return Math.min(...vals);
+  }
+  return 0;
+}
+
 // Supply chain tiers derived from the ABM config defaults
 const baseTiers = [
   { name: "Tier 3", agents: 3, color: "bg-purple-700" },
