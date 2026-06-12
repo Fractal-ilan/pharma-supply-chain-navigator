@@ -127,7 +127,7 @@ const data = validationData as unknown as {
   scorecard?: ScorecardItem[];
 };
 
-const scorecard: ScorecardItem[] = scorecard ?? [];
+const scorecard: ScorecardItem[] = (data as { scorecard?: ScorecardItem[] }).scorecard ?? [];
 
 function getDisruptionStart(scenario?: string): number {
   if (scenario && data.metadata.disruptionStarts?.[scenario] != null) {
