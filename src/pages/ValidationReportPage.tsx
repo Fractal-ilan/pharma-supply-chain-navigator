@@ -123,8 +123,10 @@ const data = validationData as {
     generatedAt: string;
   };
   scenarios: Record<string, Record<string, ScenarioConfig>>;
-  scorecard: ScorecardItem[];
+  scorecard?: ScorecardItem[];
 };
+
+const scorecard: ScorecardItem[] = data.scorecard ?? [];
 
 // ─── KPI Banner Card ─────────────────────────────────────────────
 function KpiBanner() {
