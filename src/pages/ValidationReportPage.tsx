@@ -112,11 +112,12 @@ interface ScorecardItem {
   detail: string;
 }
 
-const data = validationData as {
+const data = validationData as unknown as {
   metadata: {
     nSeeds: number;
     timeHorizon: number;
-    disruptionStart: number;
+    disruptionStart?: number;
+    disruptionStarts?: Record<string, number>;
     scenarios: string[];
     configs: string[];
     totalRuns: number;
@@ -127,6 +128,21 @@ const data = validationData as {
 };
 
 const scorecard: ScorecardItem[] = data.scorecard ?? [];
+
+function getDisruptionStart(scenario?: string): number {
+  if (scenario && data.metadata.disruptionStarts?.[scenario] != null) {
+    return data.metadata.disruptionStarts[scenario];
+  }
+  if (typeof data.metadata.disruptionStart === "number") {
+    return data.metadata.disruptionStart;
+  }
+  const starts = data.metadata.disruptionStarts;
+  if (starts) {
+    const vals = Object.values(starts);
+    if (vals.length) return Math.min(...vals);
+  }
+  return 0;
+}
 
 // ─── KPI Banner Card ─────────────────────────────────────────────
 function KpiBanner() {
