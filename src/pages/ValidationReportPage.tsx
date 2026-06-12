@@ -127,7 +127,7 @@ const data = validationData as unknown as {
   scorecard?: ScorecardItem[];
 };
 
-const scorecard: ScorecardItem[] = data.scorecard ?? [];
+const scorecard: ScorecardItem[] = scorecard ?? [];
 
 function getDisruptionStart(scenario?: string): number {
   if (scenario && data.metadata.disruptionStarts?.[scenario] != null) {
@@ -161,7 +161,7 @@ function KpiBanner() {
     1 -
     allAI.reduce((s, d) => s + d.avgCompliance, 0) /
       allNoAI.reduce((s, d) => s + d.avgCompliance, 0);
-  const passCount = data.scorecard.filter((c) => c.pass).length;
+  const passCount = scorecard.filter((c) => c.pass).length;
 
   const kpis = [
     {
@@ -184,7 +184,7 @@ function KpiBanner() {
     },
     {
       label: "Validation Score",
-      value: `${passCount}/${data.scorecard.length}`,
+      value: `${passCount}/${scorecard.length}`,
       icon: <CheckCircle2 className="h-5 w-5" />,
       color: "text-purple-400",
     },
@@ -553,8 +553,8 @@ function AllScenariosOverlay() {
 
 // ─── Validation Scorecard ───────────────────────────────────────
 function ValidationScorecard() {
-  const passCount = data.scorecard.filter((c) => c.pass).length;
-  const total = data.scorecard.length;
+  const passCount = scorecard.filter((c) => c.pass).length;
+  const total = scorecard.length;
 
   return (
     <Card>
@@ -580,7 +580,7 @@ function ValidationScorecard() {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {data.scorecard.map((check, idx) => (
+          {scorecard.map((check, idx) => (
             <div
               key={idx}
               className={`flex items-center gap-3 p-3 rounded-lg ${
