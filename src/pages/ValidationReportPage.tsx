@@ -433,7 +433,7 @@ function PathVisualization() {
                 label={{ value: "95% Target", fill: GREEN, fontSize: 10 }}
               />
               <ReferenceLine
-                x={data.metadata.disruptionStart}
+                x={getDisruptionStart(selected)}
                 stroke={RED}
                 strokeDasharray="3 3"
                 label={{ value: "Disruption", fill: RED, fontSize: 10, position: "top" }}
