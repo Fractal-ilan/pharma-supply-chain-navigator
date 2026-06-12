@@ -112,19 +112,37 @@ interface ScorecardItem {
   detail: string;
 }
 
-const data = validationData as {
+const data = validationData as unknown as {
   metadata: {
     nSeeds: number;
     timeHorizon: number;
-    disruptionStart: number;
+    disruptionStart?: number;
+    disruptionStarts?: Record<string, number>;
     scenarios: string[];
     configs: string[];
     totalRuns: number;
     generatedAt: string;
   };
   scenarios: Record<string, Record<string, ScenarioConfig>>;
-  scorecard: ScorecardItem[];
+  scorecard?: ScorecardItem[];
 };
+
+const scorecard: ScorecardItem[] = (data as { scorecard?: ScorecardItem[] }).scorecard ?? [];
+
+function getDisruptionStart(scenario?: string): number {
+  if (scenario && data.metadata.disruptionStarts?.[scenario] != null) {
+    return data.metadata.disruptionStarts[scenario];
+  }
+  if (typeof data.metadata.disruptionStart === "number") {
+    return data.metadata.disruptionStart;
+  }
+  const starts = data.metadata.disruptionStarts;
+  if (starts) {
+    const vals = Object.values(starts);
+    if (vals.length) return Math.min(...vals);
+  }
+  return 0;
+}
 
 // ─── KPI Banner Card ─────────────────────────────────────────────
 function KpiBanner() {
@@ -143,7 +161,7 @@ function KpiBanner() {
     1 -
     allAI.reduce((s, d) => s + d.avgCompliance, 0) /
       allNoAI.reduce((s, d) => s + d.avgCompliance, 0);
-  const passCount = data.scorecard.filter((c) => c.pass).length;
+  const passCount = scorecard.filter((c) => c.pass).length;
 
   const kpis = [
     {
@@ -166,7 +184,7 @@ function KpiBanner() {
     },
     {
       label: "Validation Score",
-      value: `${passCount}/${data.scorecard.length}`,
+      value: `${passCount}/${scorecard.length}`,
       icon: <CheckCircle2 className="h-5 w-5" />,
       color: "text-purple-400",
     },
@@ -415,7 +433,7 @@ function PathVisualization() {
                 label={{ value: "95% Target", fill: GREEN, fontSize: 10 }}
               />
               <ReferenceLine
-                x={data.metadata.disruptionStart}
+                x={getDisruptionStart(selected)}
                 stroke={RED}
                 strokeDasharray="3 3"
                 label={{ value: "Disruption", fill: RED, fontSize: 10, position: "top" }}
@@ -455,7 +473,7 @@ function PathVisualization() {
                 ]}
               />
               <ReferenceLine
-                x={data.metadata.disruptionStart}
+                x={getDisruptionStart(selected)}
                 stroke={RED}
                 strokeDasharray="3 3"
               />
@@ -514,7 +532,7 @@ function AllScenariosOverlay() {
               formatter={(v: number) => `${v.toFixed(1)}%`}
             />
             <ReferenceLine y={95} stroke={GREEN} strokeDasharray="5 5" />
-            <ReferenceLine x={data.metadata.disruptionStart} stroke={RED} strokeDasharray="3 3" />
+            <ReferenceLine x={getDisruptionStart()} stroke={RED} strokeDasharray="3 3" />
             {scenarioNames.map((name, i) => (
               <Line
                 key={name}
@@ -535,8 +553,8 @@ function AllScenariosOverlay() {
 
 // ─── Validation Scorecard ───────────────────────────────────────
 function ValidationScorecard() {
-  const passCount = data.scorecard.filter((c) => c.pass).length;
-  const total = data.scorecard.length;
+  const passCount = scorecard.filter((c) => c.pass).length;
+  const total = scorecard.length;
 
   return (
     <Card>
@@ -562,7 +580,7 @@ function ValidationScorecard() {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {data.scorecard.map((check, idx) => (
+          {scorecard.map((check, idx) => (
             <div
               key={idx}
               className={`flex items-center gap-3 p-3 rounded-lg ${
@@ -688,7 +706,7 @@ function Methodology() {
             configurations (AI-Enabled, No-AI) ={" "}
             {data.metadata.totalRuns} total simulation runs over a{" "}
             {data.metadata.timeHorizon}-week horizon. Disruptions begin at week{" "}
-            {data.metadata.disruptionStart}.
+            {getDisruptionStart()}.
           </p>
         </div>
         <div>
