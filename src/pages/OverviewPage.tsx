@@ -51,10 +51,17 @@ interface ScenarioConfig {
   weeklyPercentiles: WeeklyPercentile[];
 }
 
-const data = validationData as {
-  metadata: { scenarios: string[]; configs: string[]; disruptionStart: number; totalRuns: number; nSeeds: number };
+const data = validationData as unknown as {
+  metadata: {
+    scenarios: string[];
+    configs: string[];
+    disruptionStart?: number;
+    disruptionStarts?: Record<string, number>;
+    totalRuns: number;
+    nSeeds: number;
+  };
   scenarios: Record<string, Record<string, ScenarioConfig>>;
-  scorecard: Array<{ name: string; pass: boolean; detail: string }>;
+  scorecard?: Array<{ name: string; pass: boolean; detail: string }>;
 };
 
 const scenarios = data.metadata.scenarios;
