@@ -190,7 +190,7 @@ export default function OverviewPage() {
         </CardHeader>
         <CardContent className="pt-0">
           <p className="text-xs text-muted-foreground">
-            Data from {data.metadata.nSeeds}-seed Monte Carlo simulation • Median (P50) values shown • Disruption starts week {data.metadata.disruptionStart}
+            Data from {data.metadata.nSeeds}-seed Monte Carlo simulation • Median (P50) values shown • Disruption starts week {getDisruptionStart(selectedScenario)}
           </p>
         </CardContent>
       </Card>
@@ -264,7 +264,7 @@ export default function OverviewPage() {
                     formatter={(v: number) => [`${v.toFixed(1)}%`, "Service Level"]}
                   />
                   <ReferenceLine y={95} stroke="#10B981" strokeDasharray="5 5" label={{ value: "Target 95%", fill: "#10B981", fontSize: 11 }} />
-                  <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" label={{ value: "Disruption", fill: "#EF4444", fontSize: 10, position: "top" }} />
+                  <ReferenceLine x={getDisruptionStart(selectedScenario) + 1} stroke="#EF4444" strokeDasharray="3 3" label={{ value: "Disruption", fill: "#EF4444", fontSize: 10, position: "top" }} />
                   <Area type="monotone" dataKey="value" stroke="#3B82F6" fill="url(#slGrad)" strokeWidth={2} name="Service Level %" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -287,7 +287,7 @@ export default function OverviewPage() {
                     formatter={(v: number) => [`${v.toFixed(1)}%`]}
                   />
                   <Legend />
-                  <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
+                  <ReferenceLine x={getDisruptionStart(selectedScenario) + 1} stroke="#EF4444" strokeDasharray="3 3" />
                   <Line type="monotone" dataKey="ai" stroke="#10B981" strokeWidth={2} dot={false} name="AI-Enabled" />
                   <Line type="monotone" dataKey="noAi" stroke="#F59E0B" strokeWidth={2} dot={false} name="No AI" strokeDasharray="5 5" />
                 </LineChart>
@@ -317,7 +317,7 @@ export default function OverviewPage() {
                   contentStyle={{ backgroundColor: "hsl(217, 33%, 17%)", border: "1px solid hsl(215, 19%, 30%)", borderRadius: 8 }}
                   formatter={(v: number) => [v.toLocaleString(), "Units"]}
                 />
-                <ReferenceLine x={data.metadata.disruptionStart + 1} stroke="#EF4444" strokeDasharray="3 3" />
+                <ReferenceLine x={getDisruptionStart(selectedScenario) + 1} stroke="#EF4444" strokeDasharray="3 3" />
                 <Area type="monotone" dataKey="value" stroke="#10B981" fill="url(#invGrad)" strokeWidth={2} name="Total Inventory" />
               </AreaChart>
             </ResponsiveContainer>
