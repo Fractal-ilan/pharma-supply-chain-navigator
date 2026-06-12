@@ -473,7 +473,7 @@ function PathVisualization() {
                 ]}
               />
               <ReferenceLine
-                x={data.metadata.disruptionStart}
+                x={getDisruptionStart(selected)}
                 stroke={RED}
                 strokeDasharray="3 3"
               />
@@ -532,7 +532,7 @@ function AllScenariosOverlay() {
               formatter={(v: number) => `${v.toFixed(1)}%`}
             />
             <ReferenceLine y={95} stroke={GREEN} strokeDasharray="5 5" />
-            <ReferenceLine x={data.metadata.disruptionStart} stroke={RED} strokeDasharray="3 3" />
+            <ReferenceLine x={getDisruptionStart()} stroke={RED} strokeDasharray="3 3" />
             {scenarioNames.map((name, i) => (
               <Line
                 key={name}
@@ -706,7 +706,7 @@ function Methodology() {
             configurations (AI-Enabled, No-AI) ={" "}
             {data.metadata.totalRuns} total simulation runs over a{" "}
             {data.metadata.timeHorizon}-week horizon. Disruptions begin at week{" "}
-            {data.metadata.disruptionStart}.
+            {getDisruptionStart()}.
           </p>
         </div>
         <div>
